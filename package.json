@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis --publish never",
-    "release": "electron-builder --win nsis --publish always"
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1"
   },
   "repository": {
     "type": "git",
