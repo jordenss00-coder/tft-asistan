@@ -431,3 +431,10 @@ body.overlay { overflow: hidden; background: var(--bg); }
 .overlay .parts { gap: 4px; }
 .overlay .picker-input { width: 120px; }
 .overlay .picker-list { width: 240px; }
+
+/* ── Ekran okuma ── */
+.ocr-fields { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 8px; }
+.ocr-canvas-wrap canvas { width: 100%; display: block; border-radius: 8px; border: 1px solid var(--border); cursor: crosshair; }
+.shop-slot { border-radius: 10px; padding: 2px; }
+.shop-slot.fit { box-shadow: 0 0 0 2px var(--gold); background: rgba(224, 178, 82, .12); }
+.shop-slot.empty { width: 46px; height: 46px; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--border); }

@@ -16,6 +16,7 @@ const { plan } = require('./src/services/planner');
 const { Collector } = require('./src/services/engine/collector');
 const { buildStats } = require('./src/services/engine/stats');
 const { coachNow } = require('./src/services/engine/index');
+const screenReader = require('./src/services/ocr/screenReader');
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const RENDERER = path.join(__dirname, 'src', 'renderer');
@@ -26,7 +27,7 @@ const EXTERNAL_HOSTS = new Set([
 ]);
 const SETTINGS_KEYS = [
   'riotId', 'platform', 'riotApiKey', 'geminiApiKey', 'geminiModel',
-  'overlayHotkey', 'clickThroughHotkey', 'autoOverlay', 'overlayOpacity', 'disabledSources', 'accountMode', 'engineAutoCollect',
+  'overlayHotkey', 'clickThroughHotkey', 'autoOverlay', 'overlayOpacity', 'disabledSources', 'accountMode', 'engineAutoCollect', 'ocrEnabled', 'ocrRegions',
 ];
 
 let mainWin = null;
@@ -40,6 +41,9 @@ let engineStats = null;
 let statsTimer = null;
 let statsBuilding = false;
 let liveState = {};
+let ocrTimer = null;
+let ocrBusy = false;
+let lastCapture = null;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -201,6 +205,34 @@ async function resolveAccount(selected) {
   throw new Error('Hesap algılanamadı. League/TFT istemcisini açık tut, listeden kayıtlı bir hesap seç ya da Ayarlar\'a yedek Riot ID gir.');
 }
 
+/* ── Ekran okuma ── */
+
+const ocrRegions = () => store.get().ocrRegions || screenReader.DEFAULT_REGIONS;
+
+async function ocrTick() {
+  if (ocrBusy) return;
+  ocrBusy = true;
+  try {
+    const cap = await screenReader.capture();
+    if (cap.source !== 'game') return;
+    const reading = await screenReader.read(cap.image, ocrRegions(), await staticData.load());
+    broadcast('ocr:reading', reading);
+  } catch (e) {
+    broadcast('ocr:reading', { at: Date.now(), error: e.message });
+  } finally {
+    ocrBusy = false;
+  }
+}
+
+function updateOcrLoop() {
+  const on = !!store.get().ocrEnabled && gameState.inGame && gameState.isTft;
+  if (on && !ocrTimer) ocrTimer = setInterval(ocrTick, 3000);
+  if (!on && ocrTimer) {
+    clearInterval(ocrTimer);
+    ocrTimer = null;
+  }
+}
+
 /* ── Kendi istatistik motoru ── */
 
 async function loadEngineStats() {
@@ -299,6 +331,7 @@ function registerIpc() {
       if (s.engineAutoCollect && s.riotApiKey) collector.start();
       else if (!s.engineAutoCollect) collector.stop();
     }
+    updateOcrLoop();
     const failedHotkeys = registerHotkeys();
     const pub = store.getPublic();
     broadcast('settings:changed', pub);
@@ -381,6 +414,18 @@ function registerIpc() {
     autoCollect: store.get().engineAutoCollect,
     stats: engineSummary(),
   }));
+  handle('ocr:defaults', () => screenReader.DEFAULT_REGIONS);
+  handle('ocr:capture', async () => {
+    const cap = await screenReader.capture();
+    lastCapture = cap.image;
+    const preview = cap.image.getSize().width > 1600 ? cap.image.resize({ width: 1600, quality: 'good' }) : cap.image;
+    return { dataUrl: preview.toDataURL(), source: cap.source, size: cap.size };
+  });
+  handle('ocr:test', async (regions) => {
+    if (!lastCapture) lastCapture = (await screenReader.capture()).image;
+    return screenReader.read(lastCapture, regions || ocrRegions(), await staticData.load());
+  });
+
   handle('engine:rebuild', async () => {
     await rebuildStats();
     return engineSummary();
@@ -435,6 +480,7 @@ app.whenReady().then(() => {
     const isTft = state.inGame && state.isTft;
     if (store.get().autoOverlay && isTft !== wasTft) setOverlayVisible(isTft);
     if (isTft && !wasTft) detectAccount().catch(() => {});
+    updateOcrLoop();
   });
 
   staticData.load()
@@ -453,5 +499,7 @@ app.on('second-instance', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   collector?.stop();
+  if (ocrTimer) clearInterval(ocrTimer);
+  screenReader.shutdown();
   liveClient.stop();
 });

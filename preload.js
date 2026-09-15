@@ -6,9 +6,10 @@ const INVOKE = new Set([
   'overlay:toggle', 'overlay:hide', 'overlay:clickThrough', 'overlay:pin',
   'shell:open', 'clipboard:write', 'update:get', 'update:check', 'update:install',
   'coach:now', 'live:get', 'live:set', 'engine:status', 'engine:rebuild',
+  'ocr:defaults', 'ocr:capture', 'ocr:test',
 ]);
 const EVENTS = new Set([
-  'update:status', 'engine:status', 'engine:stats', 'live:state',
+  'update:status', 'engine:status', 'engine:stats', 'live:state', 'ocr:reading',
   'settings:changed', 'comp:pinned', 'game:state', 'overlay:visible', 'overlay:clickThrough', 'riot:progress', 'meta:updated',
 ]);
 

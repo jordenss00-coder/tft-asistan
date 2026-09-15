@@ -25,6 +25,19 @@ const Live = {
       this.emit('form');
       this.schedule();
     });
+    // Ekrandan okunan değerler yalnızca ana pencerede duruma işlenir (iki kez gönderilmesin diye).
+    window.tft.on('ocr:reading', (r) => {
+      this.ocr = r;
+      if (!r.error && document.body.classList.contains('app')) {
+        const patch = {};
+        if (r.gold != null && r.gold !== this.state.gold) patch.gold = r.gold;
+        if (r.level != null && r.level !== this.state.level) patch.level = r.level;
+        if (r.stage && r.stage !== this.state.stage) patch.stage = r.stage;
+        if (r.hp != null && r.hp !== this.state.hp) patch.hp = r.hp;
+        if (Object.keys(patch).length) this.set(patch, { render: true });
+      }
+      this.emit('ocr');
+    });
   },
 
   set(patch, { render = false } = {}) {
@@ -291,7 +304,24 @@ function liveResultHtml(S, compact) {
     ${b.dangerSource === 'fallback' ? '<p class="muted small">Eşik tahmini; motor verisi biriktikçe gerçek yüksek elo değerleri kullanılır.</p>' : ''}
   </section>` : '';
 
+  const ocr = Live.ocr;
+  const chosen = r.comps.top.find((c) => c.id === r.chosenCompId);
+  let shop = '';
+  if (ocr?.error) {
+    shop = `<p class="warn-text small">📷 Ekran okuma: ${esc(ocr.error)}</p>`;
+  } else if (ocr?.shop?.length) {
+    shop = `<section class="${compact ? 'ov-section' : 'card'} live-card">
+      <h3>🛒 Dükkanın <small class="muted">(ekrandan · ${Math.max(0, Math.round((Date.now() - ocr.at) / 1000))} sn önce)</small></h3>
+      <div class="unit-row">${ocr.shop.map((id) => (id
+        ? `<div class="shop-slot ${chosen?.units.includes(id) ? 'fit' : ''}">${unitIcon(S, id, { size: 'sm' })}</div>`
+        : '<div class="shop-slot empty">?</div>')).join('')}</div>
+      ${chosen ? `<p class="muted small">Altın çerçeveli birimler hedef comp'unda (${esc(chosen.name)}).</p>` : ''}
+    </section>`;
+  }
+
   const note = `<p class="muted small engine-note">${r.usesEngineStats ? `📊 Öneriler ${r.engineMatches.toLocaleString('tr-TR')} yüksek elo maçından hesaplanan istatistikleri kullanıyor.` : '📊 Kendi istatistik motorunda henüz yeterli veri yok; öneriler şimdilik site istatistiklerine dayanıyor.'}</p>`;
 
-  return compact ? econ + items + comps + board + note : `<div class="live-results">${econ}${items}${comps}${board}</div>${note}`;
+  return compact
+    ? econ + shop + items + comps + board + note
+    : `<div class="live-results">${econ}${shop}${items}${comps}${board}</div>${note}`;
 }

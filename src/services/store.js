@@ -21,6 +21,8 @@ const DEFAULTS = {
   pinnedComp: null,
   disabledSources: [],
   engineAutoCollect: true,
+  ocrEnabled: false,
+  ocrRegions: null,
 };
 
 let state = null;

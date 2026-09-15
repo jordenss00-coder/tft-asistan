@@ -21,7 +21,7 @@ async function init() {
       if (ov.tab !== 'coach') return;
       if (type === 'form') renderLiveFormInto($('#ovLiveForm'), ov.liveCtx);
       else if (type === 'busy') $('#ovLiveResult')?.classList.add('busy');
-      else if (type === 'result') renderCoachResult();
+      else if (type === 'result' || type === 'ocr') renderCoachResult();
     });
     ov.pinned = ov.settings.pinnedComp || null;
     render();

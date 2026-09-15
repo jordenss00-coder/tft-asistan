@@ -1,7 +1,7 @@
 {
   "name": "tft-asistan",
   "productName": "TFT Asistan",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "jordenss00-coder",
   "description": "TFT meta comp'ları, trait planlayıcı, oynanış analizi, AI koç ve oyun içi overlay",
   "main": "main.js",
@@ -46,7 +46,20 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "TFT Asistan"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "resources/tessdata",
+        "to": "tessdata",
+        "filter": [
+          "*.traineddata"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**"
+    ]
   },
   "license": "UNLICENSED",
   "type": "commonjs",
@@ -55,6 +68,7 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "tesseract.js": "^7.0.0"
   }
 }

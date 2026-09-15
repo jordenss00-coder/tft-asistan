@@ -44,6 +44,15 @@ Bu komut kurulum dosyasını derler ve GitHub Releases'e yükler. Kurulu uygulam
 | **Eşya Rehberi** | Bileşen tarif tablosu ve amblemler. |
 | **Overlay** | Oyunun üstünde duran panel: sabitlenen comp, meta listesi, hızlı trait planı ve eşya tablosu. TFT maçı başlayınca otomatik açılabilir. |
 
+## Ekran okuma (deneysel)
+
+Ayarlar → **Ekran okuma** açıkken, TFT maçı sırasında 3 saniyede bir oyun penceresinden kendi **altın**, **seviye**, **stage**, (isteğe bağlı) **can** ve **dükkan** bilgilerin okunur ve Canlı Koç'a otomatik aktarılır. Dükkanda hedef comp'una uyan birimler işaretlenir.
+
+- Okuma tamamen bilgisayarında, çevrimdışı OCR (Tesseract, İngilizce + Türkçe dil verisi) ile yapılır; görüntüler hiçbir yere gönderilmez.
+- Yalnızca kendi ekranındaki bilgiler okunur; rakip bilgisi okunmaz.
+- Oyunu **Kenarlıksız** veya **Pencereli** modda çalıştır.
+- Yazıların yeri çözünürlüğe ve arayüz ölçeğine göre değiştiği için ilk kullanımda kalibrasyon yap: maç sırasında "5 sn sonra ekran görüntüsü al" → her alan için kutu çiz → "Okumayı test et" → "Alanları kaydet".
+
 ## Veri kaynakları
 
 - **Set verisi (Türkçe):** CommunityDragon

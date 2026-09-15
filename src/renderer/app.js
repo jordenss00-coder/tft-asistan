@@ -106,7 +106,7 @@ async function boot() {
     if (state.view !== 'live') return;
     if (type === 'form') renderLiveFormInto($('#liveForm'), state.liveCtx);
     else if (type === 'busy') $('#liveResult')?.classList.add('busy');
-    else if (type === 'result') renderLiveResult();
+    else if (type === 'result' || type === 'ocr') renderLiveResult();
   });
   show(state.view);
   loadMeta(false);
@@ -809,7 +809,134 @@ function hotkeyFromEvent(e) {
   return [...parts, key].join('+');
 }
 
+const OCR_FIELDS = [
+  ['gold', 'Altın'], ['level', 'Seviye'], ['stage', 'Stage'], ['hp', 'Can'],
+  ['shop0', 'Dükkan 1'], ['shop1', 'Dükkan 2'], ['shop2', 'Dükkan 3'], ['shop3', 'Dükkan 4'], ['shop4', 'Dükkan 5'],
+];
+const ocrCalib = { regions: null, image: null, active: 'gold', drag: null };
+
+function ocrRegionGet(regions, key) {
+  return key.startsWith('shop') ? regions.shop?.[Number(key.slice(4))] : regions[key];
+}
+
+function ocrRegionSet(regions, key, r) {
+  if (key.startsWith('shop')) {
+    regions.shop = regions.shop || [null, null, null, null, null];
+    regions.shop[Number(key.slice(4))] = r;
+  } else {
+    regions[key] = r;
+  }
+}
+
+function drawOcr() {
+  const canvas = $('#ocrCanvas');
+  if (!canvas || !ocrCalib.regions) return;
+  const img = ocrCalib.image;
+  const width = canvas.parentElement.clientWidth || 900;
+  canvas.width = width;
+  canvas.height = Math.round(width * (img ? img.height / img.width : 9 / 16));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0b0f17';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.font = '12px Segoe UI';
+  for (const [key, label] of OCR_FIELDS) {
+    const r = ocrRegionGet(ocrCalib.regions, key);
+    if (!r) continue;
+    const active = key === ocrCalib.active;
+    ctx.strokeStyle = active ? '#f3cd7a' : '#60a5fa';
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = active ? 2 : 1;
+    ctx.strokeRect(r.x * canvas.width, r.y * canvas.height, r.w * canvas.width, r.h * canvas.height);
+    ctx.fillText(label, r.x * canvas.width, Math.max(12, r.y * canvas.height - 4));
+  }
+  const d = ocrCalib.drag;
+  if (d) {
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(Math.min(d.start.x, d.end.x) * canvas.width, Math.min(d.start.y, d.end.y) * canvas.height,
+      Math.abs(d.end.x - d.start.x) * canvas.width, Math.abs(d.end.y - d.start.y) * canvas.height);
+  }
+}
+
+function ocrResultHtml(r) {
+  const f = (label, value, key) => `<span class="fact"><small>${label}</small><b>${value ?? '–'}</b><small class="muted">"${esc(r.raw?.[key] ?? '')}"${r.confidence?.[key] != null ? ` · güven %${r.confidence[key]}` : ''}</small></span>`;
+  return `<div class="facts">${f('Altın', r.gold, 'gold')}${f('Seviye', r.level, 'level')}${f('Stage', r.stage, 'stage')}${f('Can', r.hp, 'hp')}</div>
+    <div class="label">Dükkan</div>
+    <div class="unit-row">${(r.shop || []).map((id, i) => (id ? unitIcon(state.S, id, { size: 'sm' }) : `<span class="muted small">"${esc(r.raw?.[`shop${i}`] || '?')}"</span>`)).join('')}</div>`;
+}
+
+function bindOcrCalibration() {
+  if (!ocrCalib.regions) {
+    ocrCalib.regions = JSON.parse(JSON.stringify(state.settings.ocrRegions || state.ocrDefaults || { shop: [] }));
+  }
+  $('#ocrCapture').addEventListener('click', async () => {
+    toast('5 saniye içinde TFT penceresine geç…', 'info', 5000);
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const cap = await call('ocr:capture');
+      const img = new Image();
+      img.onload = () => { ocrCalib.image = img; $('#ocrCalib').hidden = false; drawOcr(); };
+      img.src = cap.dataUrl;
+      toast(cap.source === 'game' ? 'Oyun penceresi yakalandı.' : 'Oyun penceresi bulunamadı; tüm ekran yakalandı.', cap.source === 'game' ? 'good' : 'warn');
+    } catch (err) {
+      toast(err.message, 'bad', 7000);
+    }
+  });
+  $('#ocrDefaults').addEventListener('click', async () => {
+    ocrCalib.regions = await call('ocr:defaults');
+    $('#ocrCalib').hidden = false;
+    drawOcr();
+    toast('Varsayılan alanlar yüklendi. Kaydetmeyi unutma.');
+  });
+  $('#ocrTest').addEventListener('click', async () => {
+    $('#ocrCalib').hidden = false;
+    $('#ocrResult').innerHTML = spinner('Okunuyor… (ilk çalıştırmada birkaç saniye sürer)');
+    try {
+      $('#ocrResult').innerHTML = ocrResultHtml(await call('ocr:test', ocrCalib.regions));
+    } catch (err) {
+      $('#ocrResult').innerHTML = '';
+      toast(err.message, 'bad', 7000);
+    }
+  });
+  $('#ocrSave').addEventListener('click', async () => {
+    try {
+      const r = await call('settings:set', { ocrRegions: ocrCalib.regions });
+      state.settings = { ...state.settings, ...r.settings };
+      toast('Ekran okuma alanları kaydedildi.', 'good');
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  });
+  $('#ocrFields').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ocr-field]');
+    if (!b) return;
+    ocrCalib.active = b.dataset.ocrField;
+    $$('#ocrFields [data-ocr-field]').forEach((x) => x.classList.toggle('active', x === b));
+    drawOcr();
+  });
+  const canvas = $('#ocrCanvas');
+  const pos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)), y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)) };
+  };
+  const finish = () => {
+    const d = ocrCalib.drag;
+    if (!d) return;
+    ocrCalib.drag = null;
+    const r = { x: Math.min(d.start.x, d.end.x), y: Math.min(d.start.y, d.end.y), w: Math.abs(d.end.x - d.start.x), h: Math.abs(d.end.y - d.start.y) };
+    if (r.w > 0.003 && r.h > 0.003) ocrRegionSet(ocrCalib.regions, ocrCalib.active, r);
+    drawOcr();
+  };
+  canvas.addEventListener('mousedown', (e) => { ocrCalib.drag = { start: pos(e), end: pos(e) }; });
+  canvas.addEventListener('mousemove', (e) => { if (ocrCalib.drag) { ocrCalib.drag.end = pos(e); drawOcr(); } });
+  canvas.addEventListener('mouseup', finish);
+  canvas.addEventListener('mouseleave', finish);
+  if (ocrCalib.image) { $('#ocrCalib').hidden = false; drawOcr(); }
+}
+
 async function renderSettings() {
+  if (!state.ocrDefaults) state.ocrDefaults = await call('ocr:defaults').catch(() => null);
   if (!state.sourceList) {
     try { state.sourceList = await call('meta:sources'); } catch { state.sourceList = []; }
   }
@@ -857,6 +984,24 @@ async function renderSettings() {
       </section>
 
       <section class="card">
+        <h3>Ekran okuma (deneysel)</h3>
+        <label class="check"><input type="checkbox" id="sOcr" ${s.ocrEnabled ? 'checked' : ''}> TFT maçındayken altın, seviye, stage ve dükkanı ekrandan okuyup Canlı Koç'a aktar</label>
+        <p class="muted small">Yalnızca kendi ekranındaki bilgiler okunur ve bilgisayarında işlenir; hiçbir görüntü dışarı gönderilmez. Oyunu <b>Kenarlıksız</b> veya <b>Pencereli</b> modda çalıştır. Yazıların yeri çözünürlüğe ve arayüz ölçeğine göre değiştiği için bir kez kalibrasyon yapman önerilir: maç sırasında görüntü al, her alanın üzerine kutu çiz, test et ve kaydet.</p>
+        <div class="actions-row">
+          <button type="button" class="btn btn-sm" id="ocrCapture">📸 5 sn sonra ekran görüntüsü al</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="ocrDefaults">Varsayılan alanları yükle</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="ocrTest">Okumayı test et</button>
+        </div>
+        <div id="ocrCalib" hidden>
+          <div class="ocr-fields" id="ocrFields">${OCR_FIELDS.map(([k, l]) => `<button type="button" class="chip ${k === ocrCalib.active ? 'active' : ''}" data-ocr-field="${k}">${l}</button>`).join('')}</div>
+          <div class="ocr-canvas-wrap"><canvas id="ocrCanvas"></canvas></div>
+          <p class="muted small">Yukarıdan bir alan seç, sonra görüntüde o bilginin üzerine sürükleyerek kutu çiz.</p>
+          <div id="ocrResult"></div>
+          <div class="actions-row"><button type="button" class="btn btn-sm btn-gold" id="ocrSave">Alanları kaydet</button></div>
+        </div>
+      </section>
+
+      <section class="card">
         <h3>Kendi istatistik motoru</h3>
         <label class="check"><input type="checkbox" id="sEngine" ${s.engineAutoCollect !== false ? 'checked' : ''}> Yüksek elo maçlarını arka planda topla (önerilen)</label>
         <p class="muted small">Riot API anahtarınla sunucundaki Challenger, Grandmaster ve Master oyuncularının dereceli maçları toplanır. Birim, eşya, güçlendirme ve comp istatistikleri sitelerden bağımsız olarak hesaplanır ve Canlı Koç ile maç analizinde kullanılır. Geliştirici anahtarının limiti nedeniyle saatte birkaç yüz maç birikir; uygulama açık kaldıkça veri artar.</p>
@@ -890,6 +1035,7 @@ async function renderSettings() {
     }
   });
   $('#settingsForm').addEventListener('submit', saveSettings);
+  bindOcrCalibration();
   $('#sEngineRebuild').addEventListener('click', async () => {
     try {
       const summary = await call('engine:rebuild');
@@ -925,6 +1071,7 @@ async function saveSettings(e) {
     overlayOpacity: Number($('#sOpacity').value),
     disabledSources: $$('.src-toggle').filter((x) => !x.checked).map((x) => x.value),
     engineAutoCollect: $('#sEngine').checked,
+    ocrEnabled: $('#sOcr').checked,
   };
   const riotKey = $('#sRiotKey').value.trim();
   const geminiKey = $('#sGeminiKey').value.trim();
