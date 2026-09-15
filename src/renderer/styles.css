@@ -422,6 +422,11 @@ body.overlay { overflow: hidden; background: var(--bg); }
 .v-ok { background: rgba(251, 191, 36, .18); color: var(--warn); }
 .v-strong { background: rgba(74, 222, 128, .18); color: var(--good); }
 .engine-note { margin-top: 10px; }
+.round-tips { border-left: 3px solid var(--good); }
+.round-tips .reasons li { margin-bottom: 4px; }
+.tip-buy { color: var(--good); }
+.tip-trait { color: var(--gold-2); }
+.tip-item { color: #c9d2e3; }
 .review { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; font-size: 12px; color: #c1c9d8; }
 .rv-aug { padding: 0 5px; border-radius: 4px; background: #232d45; }
 .rv-good { background: rgba(74, 222, 128, .18); color: var(--good); }
@@ -461,6 +466,13 @@ details.card summary { cursor: pointer; color: var(--gold-2); }
 .modal-close { position: absolute; right: 10px; top: 10px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
 .modal-close:hover { color: var(--text); }
 .modal-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.champ-portrait { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; border: 2px solid var(--c1); }
+.champ-portrait.cost-2 { border-color: var(--c2); }
+.champ-portrait.cost-3 { border-color: var(--c3); }
+.champ-portrait.cost-4 { border-color: var(--c4); }
+.champ-portrait.cost-5 { border-color: var(--c5); }
+.unit[data-unit] { cursor: pointer; }
+.unit[data-unit]:hover .portrait { box-shadow: 0 0 0 2px var(--gold-2); }
 .modal-body h4 { margin: 16px 0 6px; }
 
 /* ── Ekran okuma ── */

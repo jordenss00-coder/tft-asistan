@@ -44,6 +44,7 @@ Bu komut kurulum dosyasını derler ve GitHub Releases'e yükler. Kurulu uygulam
 | **Comp detayı** | Board yerleşimi (4×7 altıgen, TFT Academy rehberinden), seviye 4-5'ten 9-10'a kadar board planı, comp'taki **her birimin** önerilen eşyaları, kaynak bazlı istatistikler ve tıklanabilir trait detayları. |
 | **Eşya Rehberi** | Eşyalar yüksek elo başarısına göre sıralı: ortalama sıra, top 4, oynanma ve **en iyi taşıyıcılar**. Eşyaya tıklayınca açıklama, tarif, taşıyıcı listesi ve o eşyayı kullanan comp'lar. Bileşen birleşim tablosu da ayrı bölümde durur. |
 | **Trait detayı** | Kademe etkileri, kademe bazlı ortalama sıra/top 4, trait'in şampiyonları, amblem tarifi ve "bu trait nasıl oynanır?" için AI koça kısayol. |
+| **Şampiyon detayı** | Uygulamadaki herhangi bir birime tıklayınca açılır: yeteneğin ne yaptığı (sayılarla, 1★/2★/3★), mana maliyeti, temel değerler, en iyi eşyalar, birimin ortalama sırası ve 3★ başarısı, o birimi kullanan comp'lar. |
 | **Overlay** | Oyunun üstünde duran panel: sabitlenen comp, meta listesi, hızlı trait planı ve eşya tablosu. TFT maçı başlayınca otomatik açılabilir. |
 
 ## Ekran okuma (deneysel)

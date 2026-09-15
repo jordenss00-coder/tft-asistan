@@ -3,7 +3,7 @@
 
 const LIVE_DEFAULT = {
   stage: '2-1', level: 4, xp: 0, gold: 10, hp: 100, streak: 0,
-  components: [], completed: [], augments: [], units: [], traits: [], compId: '',
+  components: [], completed: [], augments: [], units: [], traits: [], shop: [], compId: '',
 };
 
 const Live = {
@@ -35,6 +35,8 @@ const Live = {
         if (r.stage && r.stage !== this.state.stage) patch.stage = r.stage;
         if (r.hp != null && r.hp !== this.state.hp) patch.hp = r.hp;
         if (r.traits?.length && JSON.stringify(r.traits) !== JSON.stringify(this.state.traits)) patch.traits = r.traits;
+        const shop = (r.shop || []).filter(Boolean);
+        if (JSON.stringify(shop) !== JSON.stringify(this.state.shop)) patch.shop = shop;
         if (Object.keys(patch).length) this.set(patch, { render: true });
       }
       this.emit('ocr');
@@ -274,6 +276,11 @@ function liveResultHtml(S, compact) {
   const e = r.econ;
   const fact = (label, value) => `<span class="fact"><small>${esc(label)}</small><b>${esc(value)}</b></span>`;
 
+  const roundTips = r.round?.length ? `<section class="${compact ? 'ov-section' : 'card'} live-card round-tips">
+    <h3>⚡ Bu turda</h3>
+    <ul class="reasons">${r.round.map((t) => `<li class="tip-${esc(t.type)}">${esc(t.text)}</li>`).join('')}</ul>
+  </section>` : '';
+
   const econ = `<section class="${compact ? 'ov-section' : 'card'} live-card">
     <h3>💰 Ekonomi ve seviye</h3>
     <div class="primary-advice act-${esc(e.primary.action)}"><b>${ACTION_ICON[e.primary.action] || ''} ${esc(e.primary.title)}</b><p>${esc(e.primary.detail)}</p></div>
@@ -331,6 +338,6 @@ function liveResultHtml(S, compact) {
   const note = `<p class="muted small engine-note">${r.usesEngineStats ? `📊 Öneriler ${r.engineMatches.toLocaleString('tr-TR')} yüksek elo maçından hesaplanan istatistikleri kullanıyor.` : '📊 Kendi istatistik motorunda henüz yeterli veri yok; öneriler şimdilik site istatistiklerine dayanıyor.'}</p>`;
 
   return compact
-    ? econ + shop + items + comps + board + note
-    : `<div class="live-results">${econ}${shop}${items}${comps}${board}</div>${note}`;
+    ? roundTips + econ + shop + items + comps + board + note
+    : `<div class="live-results">${roundTips}${econ}${shop}${items}${comps}${board}</div>${note}`;
 }

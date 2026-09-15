@@ -60,7 +60,7 @@ function unitIcon(S, id, o = {}) {
   const title = [name, c ? `${c.cost} altın` : '', c?.traitNames.join(', ')].filter(Boolean).join(' · ');
   const stars = o.star >= 2 ? `<span class="stars s${o.star}">${'★'.repeat(o.star)}</span>` : '';
   const items = o.items?.length ? `<span class="unit-items">${o.items.map((i) => itemIcon(S, i, 'xs')).join('')}</span>` : '';
-  return `<div class="unit u-${o.size || 'md'} cost-${c?.cost || 0}${o.carry ? ' is-carry' : ''}" title="${esc(title)}">
+  return `<div class="unit u-${o.size || 'md'} cost-${c?.cost || 0}${o.carry ? ' is-carry' : ''}" title="${esc(title)}" data-unit="${esc(id)}">
     <div class="portrait">${c?.icon ? `<img src="${esc(c.icon)}" alt="" loading="lazy">` : `<span class="fallback">${esc(name.slice(0, 2))}</span>`}${stars}${o.emblem ? '<span class="emblem-dot" title="Amblem taşıyıcı">A</span>' : ''}</div>
     ${items}${o.noName ? '' : `<span class="unit-name">${esc(name)}</span>`}
   </div>`;

@@ -265,10 +265,21 @@ async function read(image, regions, S, { ownName = null } = {}) {
 
   out.traits = [];
   if (regions.traits) {
-    const data = await block.recognize(preprocess(image, regions.traits, { scale: 3 }));
-    out.raw.traits = data.data.text.replace(/\n+/g, ' | ').trim();
-    out.confidence.traits = Math.round(data.data.confidence);
-    out.traits = parseTraits(data.data.text, S);
+    // İki geçiş: siyah-beyaz ve gri ton. Bazı satırlar yalnızca birinde okunabiliyor; sonuçlar birleştirilir.
+    const found = new Map();
+    const texts = [];
+    for (const opts of [{ scale: 3 }, { scale: 4, binarize: false }]) {
+      const data = await block.recognize(preprocess(image, regions.traits, opts));
+      texts.push(data.data.text.replace(/\n+/g, ' | ').trim());
+      out.confidence.traits = Math.max(out.confidence.traits || 0, Math.round(data.data.confidence));
+      for (const t of parseTraits(data.data.text, S)) {
+        const prev = found.get(t.apiName);
+        if (!prev || t.count > prev.count) found.set(t.apiName, t);
+      }
+      if (found.size >= 5) break;
+    }
+    out.raw.traits = texts.join(' ⟂ ');
+    out.traits = [...found.values()];
   }
 
   if (regions.players && ownName && out.hp == null) {

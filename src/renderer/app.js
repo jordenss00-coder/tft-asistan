@@ -43,10 +43,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function bindShell() {
   $('#modal').addEventListener('click', (e) => {
-    const ask = e.target.closest('[data-ask-trait]');
-    if (!ask) return;
-    closeModal();
-    askCoach(`${ask.dataset.askTrait} trait'i nasıl çalışır ve nasıl oynanır? Mekaniklerini (ödüller, tetiklenme, ne zaman ve nerede kullanılacağı), hangi kademelerin güçlü olduğunu, hangi comp'larda oynandığını ve dikkat edilmesi gerekenleri anlat.`);
+    const askTrait = e.target.closest('[data-ask-trait]');
+    if (askTrait) {
+      closeModal();
+      askCoach(`${askTrait.dataset.askTrait} trait'i nasıl çalışır ve nasıl oynanır? Mekaniklerini (ödüller, tetiklenme, ne zaman ve nerede kullanılacağı), hangi kademelerin güçlü olduğunu, hangi comp'larda oynandığını ve dikkat edilmesi gerekenleri anlat.`);
+      return;
+    }
+    const askChamp = e.target.closest('[data-ask-champ]');
+    if (askChamp) {
+      closeModal();
+      askCoach(`${askChamp.dataset.askChamp} nasıl oynanır? Yeteneğinin ne yaptığını Türkçe açıkla, hangi eşyaları alması gerektiğini, hangi comp'larda ve kaç yıldızda güçlü olduğunu, board'da nereye konumlandırılacağını anlat.`);
+      return;
+    }
+    const trait = e.target.closest('[data-trait]');
+    if (trait) openTraitModal(trait.dataset.trait);
+  });
+  // Uygulamanın herhangi bir yerindeki birime tıklayınca şampiyon detayı açılır.
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.pick-chip, [data-picker], .picker-list, .comp-pick')) return;
+    const unit = e.target.closest('.unit[data-unit]');
+    if (unit) openChampionModal(unit.dataset.unit);
   });
   $('#nav').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-view]');
@@ -110,6 +126,7 @@ async function boot() {
     state.unitStats = u;
     if (state.view === 'items') renderItems();
   }).catch(() => {});
+  call('champs:details').then((d) => { state.champDetails = d; }).catch(() => {});
   state.liveCtx = { S: state.S, getMeta: () => state.meta, compact: false, refocus: null };
   await Live.init();
   Live.on((type) => {
@@ -337,6 +354,49 @@ function unitItemsHtml(S, c) {
       : '<span class="muted small">bu birim için eşya önerisi yok (tank/yardımcı olabilir)</span>'}</div></div>
       ${source ? `<small class="muted src-note">${esc(source)}</small>` : ''}</div>`;
   }).join('')}</div>`;
+}
+
+function openChampionModal(unitId) {
+  const S = state.S;
+  const c = S.champById[unitId];
+  if (!c) return;
+  const det = state.champDetails?.champions?.[unitId];
+  const us = state.unitStats?.units?.[unitId];
+  const items = [];
+  const seen = new Set();
+  for (const list of [us?.topItems || [], det?.recommendItems || []]) {
+    for (const it of list) if (!seen.has(it) && S.items[it]) { seen.add(it); items.push(it); }
+  }
+  const comps = (state.meta?.comps || []).filter((x) => x.units.includes(unitId)).slice(0, 6);
+  const ability = det?.ability;
+  const star = (arr) => (Array.isArray(arr) ? arr.slice(0, 3).map((v) => Math.round(v)).join(' / ') : '–');
+
+  openModal(`
+    <div class="modal-head">
+      ${c.icon ? `<img src="${esc(c.icon)}" class="champ-portrait cost-${c.cost}" alt="">` : ''}
+      <div><h2>${esc(c.name)} <span class="tag">${c.cost} altın</span></h2>
+        <div class="trait-row">${c.traits.map((t) => `<button type="button" class="trait-btn" data-trait="${esc(t)}"><span class="trait trait-low">${esc(S.traitsById[t]?.name || t)}</span></button>`).join('')}</div></div>
+    </div>
+    ${us ? `<div class="facts">
+      <span class="fact"><small>Ort. sıra</small><b>${num(us.avg)}</b></span>
+      <span class="fact"><small>Top 4</small><b>${pct(us.top4)}</b></span>
+      <span class="fact"><small>1.lik</small><b>${pct(us.win)}</b></span>
+      ${us.star3 ? `<span class="fact"><small>3★ ort. sıra</small><b>${num(us.star3.avg)}</b></span>` : ''}
+      <span class="fact"><small>Oynanma</small><b>${Number(us.count).toLocaleString('tr-TR')}</b></span></div>` : ''}
+    ${ability ? `<h4>Yetenek: ${esc(ability.name)} ${ability.skillMana ? `<span class="tag">${ability.startingMana ?? 0} / ${ability.skillMana} mana</span>` : ''}</h4>
+      <p class="pre">${esc(ability.desc)}</p>
+      ${ability.stats.length ? `<ul class="reasons">${ability.stats.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+      <p class="muted small">Yetenek metni lolchess.gg'den (İngilizce); sayılar 1★ / 2★ / 3★ sırasıyla. Türkçe açıklama için aşağıdaki butonu kullan.</p>` : '<p class="muted">Yetenek bilgisi yüklenemedi.</p>'}
+    ${det?.stats?.health ? `<h4>Temel değerler <small class="muted">(1★ / 2★ / 3★)</small></h4>
+      <div class="facts">
+        <span class="fact"><small>Can</small><b>${star(det.stats.health)}</b></span>
+        <span class="fact"><small>Saldırı gücü</small><b>${star(det.stats.attackDamage)}</b></span>
+        <span class="fact"><small>Menzil</small><b>${det.stats.range ?? '–'}</b></span>
+        <span class="fact"><small>Zırh / Büyü direnci</small><b>${det.stats.armor ?? '–'} / ${det.stats.magicResist ?? '–'}</b></span>
+      </div>` : ''}
+    ${items.length ? `<h4>En iyi eşyalar</h4><div class="item-row">${items.slice(0, 6).map((i) => `<span class="item-chip">${itemIcon(S, i, 'sm')}${esc(itemName(S, i))}</span>`).join('')}</div>` : ''}
+    ${comps.length ? `<h4>Bu birimi kullanan comp'lar</h4><ul class="reasons">${comps.map((x) => `<li>${tierBadge(x.tier)} ${esc(x.name)} <span class="muted">${esc(x.levelling || '')}</span></li>`).join('')}</ul>` : ''}
+    <div class="actions-row"><button class="btn btn-sm btn-gold" data-ask-champ="${esc(c.name)}">🤖 ${esc(c.name)} nasıl oynanır?</button></div>`);
 }
 
 function openTraitModal(traitId) {

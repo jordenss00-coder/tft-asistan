@@ -18,6 +18,7 @@ const { buildStats } = require('./src/services/engine/stats');
 const { coachNow } = require('./src/services/engine/index');
 const screenReader = require('./src/services/ocr/screenReader');
 const { getUnitStats } = require('./src/services/unitStats');
+const { getChampionDetails } = require('./src/services/championDetails');
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const RENDERER = path.join(__dirname, 'src', 'renderer');
@@ -429,6 +430,7 @@ function registerIpc() {
   // "Şimdi oku": oyun algılanmasa da elle okuma yapılabilir.
   handle('ocr:now', () => ocrTick({ allowScreen: true }));
   handle('stats:units', async ({ force = false } = {}) => getUnitStats(await staticData.load(), force));
+  handle('champs:details', async ({ force = false } = {}) => getChampionDetails(await staticData.load(), force));
   handle('ocr:capture', async () => {
     const cap = await screenReader.capture();
     lastCapture = cap.image;

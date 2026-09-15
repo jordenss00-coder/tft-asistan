@@ -1,7 +1,4 @@
-const { fetchText } = require('../http');
-const { nextData } = require('./util');
-
-const URL = 'https://lolchess.gg/meta';
+const { getQueries, query, URL } = require('./lolchessPage');
 
 module.exports = {
   id: 'lolchess',
@@ -10,11 +7,10 @@ module.exports = {
   url: URL,
   maxAge: 3 * 60 * 60 * 1000,
   async fetch(S) {
-    const queries = nextData(await fetchText(URL, { timeoutMs: 45000 })).props?.pageProps?.dehydratedState?.queries || [];
-    const q = (name) => queries.find((x) => x.queryKey?.[0] === name)?.state?.data;
-    const champRefs = q('championRefs')?.champions || [];
-    const itemRefs = q('itemRefs')?.items || [];
-    const decks = q('getGuideDecks')?.guideDecks;
+    const queries = await getQueries();
+    const champRefs = query(queries, 'championRefs')?.champions || [];
+    const itemRefs = query(queries, 'itemRefs')?.items || [];
+    const decks = query(queries, 'getGuideDecks')?.guideDecks;
     if (!decks) throw new Error('Deste verisi bulunamadı.');
 
     const champKey = new Map(champRefs.map((c) => [c.key, c.ingameKey]));
