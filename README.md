@@ -72,7 +72,7 @@ Anahtarlar `%APPDATA%\tft-asistan\settings.json` içinde Windows DPAPI ile şifr
 
 - Varsayılan kısayollar: **Alt+T** overlay'i açar/kapatır, **Alt+Y** tıklama geçirgenliğini açar/kapatır (açıkken tıklamalar oyuna geçer).
 - Overlay'in oyunun üstünde görünmesi için TFT'yi **Kenarlıksız** veya **Pencereli** modda çalıştır. Tam ekran modunda görünmez.
-- Oyun algılama `127.0.0.1:2999` yerel istemci API'si üzerinden yapılır. Yalnızca oyun modu okunur.
+- Oyun algılama, çalışan oyun sürecine bakarak yapılır (`TFTClient-Win64-Shipping.exe`). TFT, League'in aksine `127.0.0.1:2999` yerel oyun API'sini açmaz. Yalnızca sürecin varlığına bakılır, oyun verisi okunmaz.
 
 ## Riot kurallarına uyum
 

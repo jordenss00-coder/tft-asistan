@@ -4,15 +4,17 @@ const { app, desktopCapturer, screen, nativeImage } = require('electron');
 // Yalnızca oyuncunun kendi ekranındaki bilgiler (altın, seviye, stage, can, kendi dükkanı) okunur;
 // görüntüler bilgisayarda işlenir, hiçbir yere gönderilmez.
 
-const GAME_WINDOW_RE = /League of Legends \(TM\) Client/i;
+// TFT penceresinin adı sondaki boşluklarla birlikte "TFT  " şeklinde gelir.
+const GAME_WINDOW_RE = /^\s*TFT\s*$/i;
 
-// 1920×1080 ve varsayılan arayüz ölçeği için yaklaşık konumlar (0-1 oranı). Kalibrasyon önerilir.
+// Gerçek bir TFT penceresi görüntüsünden (1859×1080, pencereli mod) çıkarılan konumlar (0-1 oranı).
+// Kenarlıksız modda veya farklı arayüz ölçeğinde kayabilir; Ayarlar'dan kalibrasyon önerilir.
 const DEFAULT_REGIONS = {
-  stage: { x: 0.405, y: 0.004, w: 0.05, h: 0.03 },
-  level: { x: 0.155, y: 0.808, w: 0.07, h: 0.03 },
-  gold: { x: 0.475, y: 0.808, w: 0.05, h: 0.03 },
+  stage: { x: 0.397, y: 0.035, w: 0.024, h: 0.026 },
+  level: { x: 0.182, y: 0.817, w: 0.035, h: 0.024 },
+  gold: { x: 0.534, y: 0.820, w: 0.038, h: 0.022 },
   hp: null,
-  shop: [0, 1, 2, 3, 4].map((i) => ({ x: 0.26 + i * 0.1055, y: 0.955, w: 0.075, h: 0.03 })),
+  shop: [0, 1, 2, 3, 4].map((i) => ({ x: 0.287 + i * 0.106, y: 0.960, w: 0.075, h: 0.030 })),
 };
 
 let workersPromise = null;
@@ -152,9 +154,18 @@ async function read(image, regions, S) {
     return data;
   };
 
-  const number = async (key, lo, hi) => {
+  const number = async (key, lo, hi, { textFirst = false } = {}) => {
     if (!regions[key]) return null;
     const png = preprocess(image, regions[key]);
+    // Seviye gibi alanlarda rakam, yazının içindedir ("3. Svy"); metin modu bu yazı tipinde çok daha başarılı.
+    if (textFirst) {
+      const textData = await recognize(text, key, png);
+      const hit = out.raw[key].match(/(\d{1,2})/);
+      if (hit && textData.confidence >= 50) {
+        const value = Number(hit[1]);
+        if (value >= lo && value <= hi) return value;
+      }
+    }
     let data = await recognize(digits, key, png);
     let m = out.raw[key].match(/(\d{1,3})/);
     if (!m || data.confidence < 50) {
@@ -171,14 +182,15 @@ async function read(image, regions, S) {
   };
 
   out.gold = await number('gold', 0, 999);
-  out.level = await number('level', 1, 10);
+  out.level = await number('level', 1, 10, { textFirst: true });
   out.hp = await number('hp', 0, 100);
 
   out.stage = null;
   if (regions.stage) {
     const data = await recognize(digits, 'stage', preprocess(image, regions.stage));
+    // "3-2" kalıbı tek başına güçlü bir kanıt olduğundan burada düşük güven eşiği yeterli.
     const m = out.raw.stage.replace(/\s/g, '').match(/([1-7])-([1-7])/);
-    if (m && data.confidence >= 50) out.stage = `${m[1]}-${m[2]}`;
+    if (m && data.confidence >= 25) out.stage = `${m[1]}-${m[2]}`;
   }
 
   for (let i = 0; i < (regions.shop || []).length; i++) {
