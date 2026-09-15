@@ -10,6 +10,8 @@ Kurallar:
 - Bir comp anlatırken şu başlıkları kullan: Erken oyun, Orta oyun, Final board, Eşyalar, Seviye/altın planı, Ne zaman oynanır / ne zaman bırakılır.
 - Kaynaklar arasında tier farkı varsa bunu belirt.
 - Oyuncu analizinde en fazla 5 öncelikli gelişim önerisi ver ve her birini verideki somut bir sayıya bağla.
+- "Kendi istatistik motorumuz" bölümü varsa (yüksek elo maçlarından hesaplanan veriler), site verileriyle çeliştiğinde ona öncelik ver ve bunu belirt.
+- "Oyuncunun şu anki oyun durumu" bölümü varsa, cevabını o duruma göre ver: somut ekonomi/seviye kararı, en uygun 2-3 comp ve eşya kararları. Kararı oyuncuya bırak; seçenekleri gerekçeleriyle sun.
 - Rakip oyuncuların anlık durumu hakkında tahmin yürütme (Riot kuralları gereği).`;
 
 const trLower = (s) => String(s || '').toLocaleLowerCase('tr');
@@ -88,7 +90,24 @@ function relevantGuides(meta, S, question) {
     });
 }
 
-function buildContext({ S, meta, analysis, planResult, question }) {
+function liveText(live, S) {
+  const st = live.state;
+  const a = live.advice;
+  const L = [
+    `Stage ${st.stage}, seviye ${st.level}, altın ${st.gold}, can ${st.hp}, seri ${st.streak}`,
+    `Bileşenler: ${(st.components || []).map((i) => itemName(S, i)).join(', ') || '-'}`,
+    `Tamamlanmış eşyalar: ${(st.completed || []).map((i) => itemName(S, i)).join(', ') || '-'}`,
+    `Güçlendirmeler: ${(st.augments || []).map((i) => itemName(S, i)).join(', ') || '-'}`,
+    `Birimler: ${(st.units || []).map((u) => `${unitName(S, u.id)}${'★'.repeat(u.star || 1)}`).join(', ') || '-'}`,
+    `Ekonomi motoru önerisi: ${a.econ.primary.title} — ${a.econ.primary.detail} | alternatifler: ${a.econ.alternatives.map((x) => x.title).join('; ')}`,
+    `Comp motoru (uygunluk puanı): ${a.comps.top.slice(0, 3).map((c) => `${c.name} ${c.score} (${c.reasons.slice(0, 2).join('; ')})`).join(' | ')}`,
+    `Eşya motoru: ${a.items.crafts.map((c) => `${itemName(S, c.item)}${c.holder ? ` → ${unitName(S, c.holder)}` : ''}`).join(', ') || 'yapılacak eşya yok'}${a.items.hold.length ? ` | beklet: ${a.items.hold.map((i) => itemName(S, i)).join(', ')}` : ''}`,
+  ];
+  if (a.board) L.push(`Board kontrolü: ${a.board.text}`);
+  return L.join('\n');
+}
+
+function buildContext({ S, meta, analysis, planResult, question, engine = null, live = null }) {
   const L = [`# Set ${S.setNumber} verisi`, '## Trait\'ler — kademeler: şampiyon[maliyet]'];
   for (const t of S.traits) {
     const seen = new Set();
@@ -105,12 +124,18 @@ function buildContext({ S, meta, analysis, planResult, question }) {
     for (const c of meta.comps.filter((x) => x.units.length).slice(0, 25)) L.push(compLine(c, S));
     L.push(...relevantGuides(meta, S, question));
   }
+  if (engine?.matches) {
+    L.push(`## Kendi istatistik motorumuz (${engine.matches} yüksek elo maçı, yama ${engine.patches.join('/')})`);
+    for (const c of engine.comps) L.push(`- ${c.name}: ${c.n} oyun, ort. sıra ${fmt(c.avg)}, top4 %${Math.round((c.top4 || 0) * 100)}`);
+    if (engine.augments.length) L.push(`En iyi sonuç veren güçlendirmeler: ${engine.augments.map((a) => `${itemName(S, a.id)} (ort ${fmt(a.avg)})`).join(', ')}`);
+  }
+  if (live) L.push('## Oyuncunun şu anki oyun durumu', liveText(live, S));
   if (planResult) L.push('## Trait planlayıcı sonucu', planText(planResult, S));
   if (analysis?.coachSummary) L.push('## Oyuncunun son maç analizi', analysis.coachSummary);
   return L.join('\n');
 }
 
-async function ask({ settings, S, meta, analysis, question, history = [] }) {
+async function ask({ settings, S, meta, analysis, question, history = [], engine = null, live = null }) {
   if (!settings.geminiApiKey) {
     throw new Error('Gemini API anahtarı eksik. Ayarlar sayfasından ekle (aistudio.google.com/apikey adresinden alınabilir).');
   }
@@ -118,7 +143,7 @@ async function ask({ settings, S, meta, analysis, question, history = [] }) {
   if (!q) throw new Error('Soru boş olamaz.');
 
   const planResult = detectPlan(S, meta, q);
-  const context = buildContext({ S, meta, analysis, planResult, question: q });
+  const context = buildContext({ S, meta, analysis, planResult, question: q, engine, live });
   const contents = [
     { role: 'user', parts: [{ text: `BAĞLAM (güncel veriler):\n${context}` }] },
     { role: 'model', parts: [{ text: 'Bağlamı aldım. Sorunu bekliyorum.' }] },

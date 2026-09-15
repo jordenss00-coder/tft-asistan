@@ -1,4 +1,6 @@
 const { makeResolver } = require('./traits');
+const { boardPower } = require('./engine/stats');
+const { recommendComps } = require('./engine/compRecommender');
 
 const QUEUES = { 1100: 'Dereceli', 1090: 'Normal', 1130: 'Hiper Tempo', 1160: 'Çiftli Mücadele' };
 const MAIN_QUEUES = new Set([1100, 1090]);
@@ -82,6 +84,56 @@ function parseGame(m, puuid, comps, res) {
     highCost2: units.filter((u) => u.cost >= 4 && u.star >= 2).length,
     threeStars: units.filter((u) => u.star >= 3).length,
   };
+}
+
+/**
+ * Maçı yüksek elo istatistikleriyle karşılaştırır: güçlendirme seçimi, eşya yerleşimi,
+ * elenirken board gücü ve o eşya/güçlendirmelere daha uygun comp'lar.
+ */
+function reviewGame(g, S, stats, metaComps) {
+  const out = { augments: [], items: [], board: null, altComps: [], playedTop: false };
+  for (const a of g.augments) {
+    const st = stats.augments?.[a.id];
+    if (!st || st.n < 20) continue;
+    out.augments.push({ id: a.id, name: a.name, avg: st.avg, n: st.n, verdict: st.smoothed <= 4.3 ? 'good' : st.smoothed >= 4.7 ? 'bad' : 'ok' });
+  }
+  for (const u of g.units) {
+    const list = stats.unitItems?.[u.apiName];
+    if (!list?.length) continue;
+    const best = list.find((x) => !u.items.includes(x.item));
+    if (!best) continue;
+    for (const it of u.items) {
+      if (/Component/i.test(it)) continue;
+      const st = list.find((x) => x.item === it);
+      if (st && st.smoothed - best.smoothed >= 0.35) {
+        out.items.push({
+          unit: u.apiName, unitName: u.name, item: it, itemName: S.items[it]?.name || it, itemAvg: st.avg,
+          better: best.item, betterName: S.items[best.item]?.name || best.item, betterAvg: best.avg,
+        });
+      }
+    }
+  }
+  if (g.placement >= 5 && g.lastRound && stats.danger) {
+    let danger = null;
+    for (let k = 0; k <= 3 && danger == null; k++) danger = stats.danger[g.lastRound - k] ?? stats.danger[g.lastRound + k] ?? null;
+    if (danger) {
+      const power = boardPower(g.units.map((u) => ({ id: u.apiName, star: u.star, items: u.items })), S);
+      out.board = { power, danger, ratio: power / danger };
+    }
+  }
+  // Birimler hariç tutulur; soru "bu eşya ve güçlendirmelerle hangi comp daha iyiydi?"
+  const rec = recommendComps({
+    S, metaComps, stats,
+    state: {
+      stage: g.stage,
+      level: g.level,
+      augments: g.augments.map((a) => a.id),
+      completed: g.units.flatMap((u) => u.items).filter((i) => !/Component/i.test(i)),
+    },
+  });
+  out.altComps = rec.top.slice(0, 3).map((c) => ({ id: c.id, name: c.name, score: c.score }));
+  out.playedTop = !!g.comp && out.altComps.some((c) => c.id === g.comp.id);
+  return out;
 }
 
 function groupBy(games, keyFn, nameFn, extraFn = () => ({})) {
@@ -173,6 +225,30 @@ function buildInsights(games, s, compStats, traitStats) {
   const worst = ranked[ranked.length - 1];
   if (ranked.length > 1 && worst.avg >= 5) add('warn', `${worst.name} ile zorlanıyorsun`, `${worst.games} maçta ortalama ${num(worst.avg)}. Bu trait'i ancak güçlü başlangıçla oyna.`);
 
+  const reviewed = games.filter((g) => g.review);
+  if (reviewed.length >= 5) {
+    const augs = reviewed.flatMap((g) => g.review.augments);
+    const badAugs = augs.filter((a) => a.verdict === 'bad');
+    if (augs.length >= 6 && badAugs.length / augs.length >= 0.35) {
+      const names = [...new Set(badAugs.map((a) => a.name))].slice(0, 3).join(', ');
+      add('warn', 'Güçlendirme seçimlerin zayıf kalıyor', `Seçtiğin güçlendirmelerin ${pct(badAugs.length / augs.length)} kadarı yüksek elo'da ortalamanın altında sonuç veriyor (ör. ${names}). Seçim ekranında Canlı Koç'a güçlendirme seçeneklerini girip karşılaştır.`);
+    }
+    const itemIssues = reviewed.flatMap((g) => g.review.items);
+    if (itemIssues.length >= 3) {
+      const ex = itemIssues[0];
+      add('warn', 'Eşya yerleşimin geliştirilebilir', `${itemIssues.length} kez bir birime yüksek elo'da belirgin şekilde daha zayıf sonuç veren bir eşya verdin. Örnek: ${ex.unitName}'da ${ex.itemName} (ort. ${num(ex.itemAvg)}) yerine ${ex.betterName} (ort. ${num(ex.betterAvg)}).`);
+    }
+    const boards = reviewed.filter((g) => g.review.board);
+    if (boards.length >= 3) {
+      const ratio = avg(boards.map((g) => g.review.board.ratio));
+      if (ratio < 0.9) add('bad', 'Zayıf board ile eleniyorsun', `Top 4 dışı maçlarda elendiğin turdaki board gücün, aynı turda elenen yüksek elo oyuncularının medyanının ortalama ${pct(ratio)} kadardı. Board'u daha erken güçlendir, can kaybını azalt.`);
+    }
+    const missed = reviewed.filter((g) => g.comp && !g.review.playedTop && !isTop4(g));
+    if (missed.length >= 3) {
+      add('warn', 'Eşya ve güçlendirmelerine daha uygun comp\'lar vardı', `${missed.length} kaybedilen maçta, elindeki eşya ve güçlendirmelere göre motorun ilk 3 önerisi dışında bir comp oynadın. Maç geçmişinde her maç için önerilen alternatifleri görebilirsin.`);
+    }
+  }
+
   const order = { bad: 0, warn: 1, good: 2 };
   return out.sort((a, b) => order[a.type] - order[b.type]);
 }
@@ -190,12 +266,16 @@ function coachSummary(r) {
   for (const i of r.insights) L.push(`- [${i.type}] ${i.title}: ${i.detail}`);
   L.push('Son 10 maç:');
   for (const g of r.games.slice(0, 10)) {
-    L.push(`- #${g.placement} | ${g.comp?.name || g.mainTrait?.name || 'karışık'} | sv ${g.level} | elendiği tur ${g.stage} | kalan altın ${g.gold} | 3 eşyalı birim ${g.threeItemUnits} | ${g.units.map((u) => `${u.name}${'★'.repeat(u.star)}`).join(', ')}`);
+    const rv = g.review;
+    const reviewText = rv
+      ? ` | zayıf güçlendirmeler: ${rv.augments.filter((a) => a.verdict === 'bad').map((a) => a.name).join(', ') || '-'} | eşya hataları: ${rv.items.map((x) => `${x.unitName}: ${x.itemName}→${x.betterName}`).join(', ') || '-'} | uygun comp'lar: ${rv.altComps.map((c) => c.name).join(', ')}${rv.board ? ` | board gücü ${rv.board.power}/${Math.round(rv.board.danger)}` : ''}`
+      : '';
+    L.push(`- #${g.placement} | ${g.comp?.name || g.mainTrait?.name || 'karışık'} | sv ${g.level} | elendiği tur ${g.stage} | kalan altın ${g.gold} | 3 eşyalı birim ${g.threeItemUnits} | ${g.units.map((u) => `${u.name}${'★'.repeat(u.star)}`).join(', ')}${reviewText}`);
   }
   return L.join('\n');
 }
 
-function analyze({ matches, account, rank, S, metaComps }) {
+function analyze({ matches, account, rank, S, metaComps, stats = null }) {
   const res = { unit: makeResolver(S.champById), item: makeResolver(S.items), trait: makeResolver(S.traitsById) };
   const all = matches.map((m) => parseGame(m, account.puuid, metaComps, res)).filter(Boolean);
   let games = all.filter((g) => g.set === S.setNumber);
@@ -204,6 +284,7 @@ function analyze({ matches, account, rank, S, metaComps }) {
   if (main.length >= 3) games = main;
   games.sort((a, b) => b.date - a.date);
   if (!games.length) throw new Error('Analiz edilecek uygun maç bulunamadı.');
+  if (stats?.matches) for (const g of games) g.review = reviewGame(g, S, stats, metaComps);
 
   const bot = games.filter((g) => !isTop4(g));
   const summary = {

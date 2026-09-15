@@ -21,10 +21,14 @@ const state = {
   chat: [],
   chatBusy: false,
   includeAnalysis: true,
+  includeLive: false,
+  engine: null,
+  liveCtx: null,
 };
 
 const VIEWS = {
   meta: renderMeta,
+  live: renderLive,
   planner: renderPlanner,
   analysis: renderAnalysis,
   coach: renderCoach,
@@ -61,6 +65,14 @@ function bindShell() {
     if (state.view === 'meta') renderCompList();
   });
   window.tft.on('update:status', renderUpdate);
+  window.tft.on('engine:status', (s) => {
+    state.engine = { ...state.engine, ...s };
+    renderEngineStatus();
+  });
+  window.tft.on('engine:stats', (summary) => {
+    state.engine = { ...state.engine, stats: summary };
+    renderEngineStatus();
+  });
   call('update:get').then((u) => {
     state.version = u.current;
     renderUpdate(u);
@@ -87,8 +99,36 @@ async function boot() {
     return;
   }
   call('riot:lastAnalysis').then((a) => { state.analysis = a; }).catch(() => {});
+  call('engine:status').then((s) => { state.engine = s; renderEngineStatus(); }).catch(() => {});
+  state.liveCtx = { S: state.S, getMeta: () => state.meta, compact: false, refocus: null };
+  await Live.init();
+  Live.on((type) => {
+    if (state.view !== 'live') return;
+    if (type === 'form') renderLiveFormInto($('#liveForm'), state.liveCtx);
+    else if (type === 'busy') $('#liveResult')?.classList.add('busy');
+    else if (type === 'result') renderLiveResult();
+  });
   show(state.view);
   loadMeta(false);
+}
+
+function engineStatusText(e) {
+  if (!e) return 'Motor durumu yükleniyor…';
+  const parts = [
+    e.running ? '🟢 Veri topluyor' : '⚪ Durdu',
+    `${(e.matches || 0).toLocaleString('tr-TR')} yüksek elo maçı`,
+  ];
+  if (e.running && e.players) parts.push(`oyuncu ${Math.min(e.playerIndex + 1, e.players)}/${e.players}`);
+  if (e.stats) parts.push(`istatistik: ${e.stats.matches.toLocaleString('tr-TR')} maç (yama ${e.stats.patches.join(', ') || '?'}), ${timeAgo(e.stats.builtAt)}`);
+  if (e.error) parts.push(`⚠ ${e.error}`);
+  return parts.join(' · ');
+}
+
+function renderEngineStatus() {
+  for (const id of ['#engineStatus', '#engineLine']) {
+    const el = $(id);
+    if (el) el.textContent = engineStatusText(state.engine);
+  }
 }
 
 async function loadMeta(force) {
@@ -312,6 +352,38 @@ async function onCompClick(e) {
   }
 }
 
+/* ───────────── Canlı Koç ───────────── */
+
+function renderLive() {
+  $('#view').innerHTML = `
+    <header class="view-head">
+      <div><h1>Canlı Koç</h1>
+        <p class="muted">Oyundaki durumunu gir; ekonomi, comp, eşya ve board önerileri anında güncellenir. Overlay'deki Koç sekmesiyle eşzamanlı çalışır.</p>
+        <p class="muted small" id="engineLine">${esc(engineStatusText(state.engine))}</p></div>
+      <div class="toolbar"><button class="btn" id="liveAsk">🤖 AI koça bu durumu sor</button></div>
+    </header>
+    <div class="live-layout"><div id="liveForm"></div><div id="liveResult" class="live-result"></div></div>`;
+  renderLiveFormInto($('#liveForm'), state.liveCtx);
+  bindLiveForm($('#liveForm'), state.liveCtx);
+  $('#liveResult').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-target-comp]');
+    if (b) Live.set({ compId: b.dataset.targetComp }, { render: true });
+  });
+  $('#liveAsk').addEventListener('click', () => {
+    state.includeLive = true;
+    askCoach('Şu anki oyun durumuma göre ne yapmalıyım? Ekonomi, comp, eşya ve board kararlarımı gerekçeleriyle değerlendir.');
+  });
+  renderLiveResult();
+  if (!Live.result && !Live.busy) Live.compute();
+}
+
+function renderLiveResult() {
+  const el = $('#liveResult');
+  if (!el) return;
+  el.classList.remove('busy');
+  el.innerHTML = liveResultHtml(state.S, false);
+}
+
 /* ───────────── Planlayıcı ───────────── */
 
 function plannerTraits() {
@@ -528,6 +600,23 @@ function statTable(rows, isComp) {
     <tbody>${rows.slice(0, 10).map((r) => `<tr><td>${isComp && r.tier ? `${tierBadge(r.tier)} ` : ''}${esc(r.name)}</td><td>${r.games}</td><td class="${r.avg <= 4 ? 'ok' : r.avg > 4.5 ? 'bad' : ''}">${num(r.avg)}</td><td>${pct(r.top4)}</td></tr>`).join('')}</tbody></table>`;
 }
 
+function reviewHtml(g) {
+  const r = g.review;
+  if (!r) return '';
+  const parts = [];
+  if (r.augments.length) {
+    parts.push(`<span class="rv">Güçlendirmeler: ${r.augments.map((a) => `<span class="rv-aug rv-${a.verdict}" title="Yüksek elo ort. sıra ${num(a.avg)} (${a.n} oyun)">${esc(a.name)}</span>`).join(' ')}</span>`);
+  }
+  if (r.items.length) {
+    parts.push(`<span class="rv">Eşya: ${r.items.slice(0, 2).map((x) => `${esc(x.unitName)}'da ${esc(x.itemName)} (ort. ${num(x.itemAvg)}) yerine <b>${esc(x.betterName)}</b> (ort. ${num(x.betterAvg)})`).join('; ')}</span>`);
+  }
+  if (r.board) parts.push(`<span class="rv">Elenirken board gücün ${r.board.power}; bu turda elenenlerin medyanı ${Math.round(r.board.danger)}</span>`);
+  if (r.altComps.length) {
+    parts.push(`<span class="rv">${r.playedTop ? '✓ Eşya ve güçlendirmelerine uygun bir comp oynadın' : 'Eşya ve güçlendirmelerine daha uygun olanlar'}: ${r.altComps.map((c) => esc(c.name)).join(', ')}</span>`);
+  }
+  return parts.length ? `<div class="review">${parts.join('')}</div>` : '';
+}
+
 function analysisHtml(a) {
   const S = state.S;
   const s = a.summary;
@@ -557,7 +646,8 @@ function analysisHtml(a) {
     <div class="match">${placeBadge(g.placement)}
       <div class="match-info"><b>${esc(g.comp?.name || g.mainTrait?.name || 'Karışık board')}</b>
         <small class="muted">${new Date(g.date).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })} · ${esc(g.queueName)} · Seviye ${g.level} · ${g.stage} · ${g.gold} altın kaldı</small>
-        <div class="trait-row">${g.traits.filter((t) => !t.unique).slice(0, 5).map(traitChip).join('')}</div></div>
+        <div class="trait-row">${g.traits.filter((t) => !t.unique).slice(0, 5).map(traitChip).join('')}</div>
+        ${reviewHtml(g)}</div>
       <div class="unit-row tight">${[...g.units].sort((x, y) => x.cost - y.cost).map((u) => unitIcon(S, u.apiName, { size: 'xs', star: u.star, items: u.items, noName: true })).join('')}</div>
     </div>`).join('')}</div></section>`;
 }
@@ -578,22 +668,29 @@ function renderCoach() {
       <div><h1>AI Koç</h1><p class="muted">Gemini (${esc(s.geminiModel)}) · güncel set verisi, birleşik meta ve maç analizinle yanıt verir</p></div>
       <div class="toolbar">
         <label class="check"><input type="checkbox" id="chIncl" ${state.includeAnalysis ? 'checked' : ''}> Maç analizimi dahil et</label>
+        <label class="check"><input type="checkbox" id="chLive" ${state.includeLive ? 'checked' : ''}> Canlı oyun durumumu dahil et</label>
         <button class="btn btn-ghost" id="chClear">Sohbeti temizle</button>
       </div>
     </header>
     ${!s.hasGeminiKey ? '<div class="callout">AI koç için Gemini API anahtarı gerekiyor (Google AI Studio\'dan alınabilir; Flash-Lite modelleri çok düşük maliyetlidir). <button class="btn btn-sm" id="chGoto">Ayarlara git</button></div>' : ''}
     <div class="chat" id="chat"></div>
-    <div class="chips" id="chips">${SUGGESTIONS.map((q) => `<button class="chip">${esc(q)}</button>`).join('')}</div>
+    <div class="chips" id="chips">${SUGGESTIONS.map((q) => `<button class="chip">${esc(q)}</button>`).join('')}<button class="chip" data-live="1">Şu anki oyun durumuma göre ne yapmalıyım?</button></div>
     <form class="chat-input" id="chForm">
       <textarea id="chText" rows="2" placeholder="Örn: 11 Çiçek için kaç amblem lazım? (Enter: gönder · Shift+Enter: yeni satır)"></textarea>
       <button class="btn btn-gold" type="submit">Gönder</button>
     </form>`;
   $('#chIncl').addEventListener('change', (e) => { state.includeAnalysis = e.target.checked; });
+  $('#chLive').addEventListener('change', (e) => { state.includeLive = e.target.checked; });
   $('#chClear').addEventListener('click', () => { state.chat = []; renderChat(); });
   $('#chGoto')?.addEventListener('click', () => show('settings'));
   $('#chips').addEventListener('click', (e) => {
     const b = e.target.closest('.chip');
-    if (b) sendChat(b.textContent);
+    if (!b) return;
+    if (b.dataset.live) {
+      state.includeLive = true;
+      $('#chLive').checked = true;
+    }
+    sendChat(b.textContent);
   });
   $('#chForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -634,7 +731,7 @@ async function sendChat(question) {
   state.chatBusy = true;
   renderChat();
   try {
-    const r = await call('coach:ask', { question, history, includeAnalysis: state.includeAnalysis });
+    const r = await call('coach:ask', { question, history, includeAnalysis: state.includeAnalysis, includeLive: state.includeLive });
     state.chat.push({ role: 'model', text: r.text, meta: r });
   } catch (e) {
     state.chat.push({ role: 'model', text: e.message, error: true });
@@ -730,7 +827,7 @@ async function renderSettings() {
           <label>Yedek Riot ID (isteğe bağlı)<input id="sRiotId" placeholder="Oyuncu#TR1" value="${esc(s.riotId)}"></label>
           <label>Varsayılan sunucu<select id="sPlatform">${PLATFORM_OPTIONS.map(([v, l]) => `<option value="${v}" ${v === s.platform ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="span2">Riot API anahtarı
-            <input id="sRiotKey" type="password" autocomplete="off" placeholder="${s.hasRiotKey ? 'Kayıtlı ✓ (değiştirmek için yeni anahtarı yapıştır)' : 'RGAPI-…'}"></label>
+            <input id="sRiotKey" type="password" autocomplete="off" placeholder="${s.hasRiotKey ? 'Kayıtlı ✓ (değiştirmek için yeni anahtarı yapıştır)' : s.riotKeyUnreadable ? '⚠ Kayıtlı anahtar okunamadı, lütfen yeniden gir' : 'RGAPI-…'}"></label>
         </div>
         ${s.hasRiotKey ? '<label class="check"><input type="checkbox" id="sClearRiot"> Kayıtlı Riot anahtarını sil</label>' : ''}
         <p class="muted small">Anahtarı <button type="button" class="link" data-url="https://developer.riotgames.com/">developer.riotgames.com ↗</button> adresinden alabilirsin. Geliştirici anahtarları 24 saatte bir yenilenir; kalıcı kullanım için "Personal API Key" başvurusu yapılabilir.</p>
@@ -740,7 +837,7 @@ async function renderSettings() {
         <h3>AI Koç (Gemini)</h3>
         <div class="form-grid">
           <label class="span2">Gemini API anahtarı
-            <input id="sGeminiKey" type="password" autocomplete="off" placeholder="${s.hasGeminiKey ? 'Kayıtlı ✓ (değiştirmek için yeni anahtarı yapıştır)' : 'AIza…'}"></label>
+            <input id="sGeminiKey" type="password" autocomplete="off" placeholder="${s.hasGeminiKey ? 'Kayıtlı ✓ (değiştirmek için yeni anahtarı yapıştır)' : s.geminiKeyUnreadable ? '⚠ Kayıtlı anahtar okunamadı, lütfen yeniden gir' : 'AIza…'}"></label>
           <label>Model<input id="sModel" list="modelList" value="${esc(s.geminiModel)}"><datalist id="modelList"></datalist></label>
           <label>&nbsp;<button type="button" class="btn" id="sLoadModels">Modelleri getir</button></label>
         </div>
@@ -757,6 +854,14 @@ async function renderSettings() {
           <label class="check"><input type="checkbox" id="sAuto" ${s.autoOverlay ? 'checked' : ''}> TFT maçı başlayınca overlay'i otomatik aç</label>
         </div>
         <p class="muted small">Kısayol alanına tıklayıp tuş kombinasyonuna bas (ör. Alt+T). Overlay'in oyunun üstünde görünmesi için TFT'yi <b>Kenarlıksız</b> veya <b>Pencereli</b> modda çalıştır. Overlay yalnızca kendi seçtiğin comp ve planları gösterir; rakip bilgisi okumaz (Riot kurallarına uygun).</p>
+      </section>
+
+      <section class="card">
+        <h3>Kendi istatistik motoru</h3>
+        <label class="check"><input type="checkbox" id="sEngine" ${s.engineAutoCollect !== false ? 'checked' : ''}> Yüksek elo maçlarını arka planda topla (önerilen)</label>
+        <p class="muted small">Riot API anahtarınla sunucundaki Challenger, Grandmaster ve Master oyuncularının dereceli maçları toplanır. Birim, eşya, güçlendirme ve comp istatistikleri sitelerden bağımsız olarak hesaplanır ve Canlı Koç ile maç analizinde kullanılır. Geliştirici anahtarının limiti nedeniyle saatte birkaç yüz maç birikir; uygulama açık kaldıkça veri artar.</p>
+        <p class="small" id="engineStatus">${esc(engineStatusText(state.engine))}</p>
+        <div class="actions-row"><button type="button" class="btn btn-sm" id="sEngineRebuild">İstatistikleri şimdi yeniden hesapla</button></div>
       </section>
 
       <section class="card">
@@ -785,6 +890,16 @@ async function renderSettings() {
     }
   });
   $('#settingsForm').addEventListener('submit', saveSettings);
+  $('#sEngineRebuild').addEventListener('click', async () => {
+    try {
+      const summary = await call('engine:rebuild');
+      state.engine = { ...state.engine, stats: summary };
+      renderEngineStatus();
+      toast(summary ? `İstatistikler ${summary.matches} maçtan yeniden hesaplandı.` : 'Henüz toplanmış maç yok.', summary ? 'good' : 'warn');
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  });
   $('#settingsForm').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-forget]');
     if (!b) return;
@@ -809,6 +924,7 @@ async function saveSettings(e) {
     autoOverlay: $('#sAuto').checked,
     overlayOpacity: Number($('#sOpacity').value),
     disabledSources: $$('.src-toggle').filter((x) => !x.checked).map((x) => x.value),
+    engineAutoCollect: $('#sEngine').checked,
   };
   const riotKey = $('#sRiotKey').value.trim();
   const geminiKey = $('#sGeminiKey').value.trim();

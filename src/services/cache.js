@@ -18,6 +18,13 @@ function root() {
   return baseDir;
 }
 
+/** Uygulama veri klasörü altında (yoksa oluşturarak) bir klasör yolu döndürür. */
+function dataDir(...parts) {
+  const dir = path.join(path.dirname(root()), ...parts);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function fileFor(name, sub) {
   const dir = path.join(root(), ...sub);
   fs.mkdirSync(dir, { recursive: true });
@@ -40,4 +47,4 @@ function write(name, data, sub = []) {
   fs.writeFileSync(fileFor(name, sub), JSON.stringify(data));
 }
 
-module.exports = { read, write };
+module.exports = { read, write, dataDir };

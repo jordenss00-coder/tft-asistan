@@ -37,8 +37,10 @@ Bu komut kurulum dosyasını derler ve GitHub Releases'e yükler. Kurulu uygulam
 | --- | --- |
 | **Meta Comp'lar** | 6 kaynaktan gelen comp'ları birim benzerliğine göre birleştirir, her sitenin tier'ını yan yana gösterir. Carry eşyaları, erken board, stage ipuçları, güçlendirmeler ve TFT istemcisine yapıştırılabilir takım kodu içerir. |
 | **Comp Planlayıcı** | Bir trait'i hedef kademeye çıkarmak için gereken şampiyonları, amblem sayısını ve tarifini, seviye/slot ihtiyacını, adım adım yolu ve önerilen final board'u hesaplar. |
-| **Oynanış Analizi** | Riot API ile son maçlarını çeker: ortalama sıra, top 4, seviye ve altın alışkanlıkları, eşya toplama, comp/trait/güçlendirme performansı ve otomatik gelişim önerileri. |
+| **Oynanış Analizi** | Açık istemcideki hesabını otomatik algılar, son maçlarını çeker: ortalama sıra, top 4, seviye ve altın alışkanlıkları, eşya toplama, comp/trait/güçlendirme performansı ve otomatik gelişim önerileri. Motor verisi varsa her maç için güçlendirme seçimi, eşya yerleşimi ("X yerine Y"), elenirken board gücü ve o eşya/güçlendirmelere daha uygun comp'lar değerlendirilir. |
 | **AI Koç** | Gemini ile Türkçe sohbet. Set verisi, birleşik meta, trait planı ve maç analizin bağlam olarak gönderilir. |
+| **Canlı Koç** | Oyundaki durumunu (stage, seviye, altın, can, seri, bileşenler, eşyalar, güçlendirmeler, birimler) girersin; ekonomi/seviye/roll kararı, sana en uygun comp'lar, bileşenlerden hangi eşyanın yapılıp kime verileceği ve board gücü kontrolü anında hesaplanır. Overlay'deki Koç sekmesiyle eşzamanlıdır. |
+| **Kendi istatistik motoru** | Riot API ile sunucundaki Challenger/Grandmaster/Master dereceli maçlarını arka planda toplar; birim, yıldız, eşya (birim üzerinde), güçlendirme, trait ve comp başarılarını sitelerden bağımsız hesaplar. Canlı Koç ve maç analizi bu veriyi kullanır. |
 | **Eşya Rehberi** | Bileşen tarif tablosu ve amblemler. |
 | **Overlay** | Oyunun üstünde duran panel: sabitlenen comp, meta listesi, hızlı trait planı ve eşya tablosu. TFT maçı başlayınca otomatik açılabilir. |
 

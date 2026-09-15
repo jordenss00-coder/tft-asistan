@@ -1,6 +1,6 @@
 'use strict';
 
-const ov = { S: null, meta: null, settings: null, tab: 'comp', pinned: null, traitSel: null, traitPlan: null };
+const ov = { S: null, meta: null, settings: null, tab: 'coach', pinned: null, traitSel: null, traitPlan: null, liveCtx: null };
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -15,6 +15,14 @@ async function init() {
     ov.settings = await call('settings:get');
     applySettings();
     ov.S = await call('static:get');
+    ov.liveCtx = { S: ov.S, getMeta: () => ov.meta, compact: true, refocus: null };
+    await Live.init();
+    Live.on((type) => {
+      if (ov.tab !== 'coach') return;
+      if (type === 'form') renderLiveFormInto($('#ovLiveForm'), ov.liveCtx);
+      else if (type === 'busy') $('#ovLiveResult')?.classList.add('busy');
+      else if (type === 'result') renderCoachResult();
+    });
     ov.pinned = ov.settings.pinnedComp || null;
     render();
     ov.meta = await call('meta:get', {});
@@ -76,7 +84,26 @@ function syncTabs() {
 
 function render() {
   if (!ov.S) return;
-  ({ comp: renderComp, meta: renderMetaTab, trait: renderTraitTab, items: renderItemsTab })[ov.tab]();
+  ({ coach: renderCoachTab, comp: renderComp, meta: renderMetaTab, trait: renderTraitTab, items: renderItemsTab })[ov.tab]();
+}
+
+function renderCoachTab() {
+  body('<div id="ovLiveForm"></div><div id="ovLiveResult" class="live-result"></div>');
+  renderLiveFormInto($('#ovLiveForm'), ov.liveCtx);
+  bindLiveForm($('#ovLiveForm'), ov.liveCtx);
+  $('#ovLiveResult').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-target-comp]');
+    if (b) Live.set({ compId: b.dataset.targetComp });
+  });
+  renderCoachResult();
+  if (!Live.result && !Live.busy) Live.compute();
+}
+
+function renderCoachResult() {
+  const el = $('#ovLiveResult');
+  if (!el) return;
+  el.classList.remove('busy');
+  el.innerHTML = liveResultHtml(ov.S, true);
 }
 
 function renderComp() {

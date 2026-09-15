@@ -5,9 +5,10 @@ const INVOKE = new Set([
   'riot:analyze', 'riot:lastAnalysis', 'account:detect', 'account:forget', 'coach:ask', 'gemini:models',
   'overlay:toggle', 'overlay:hide', 'overlay:clickThrough', 'overlay:pin',
   'shell:open', 'clipboard:write', 'update:get', 'update:check', 'update:install',
+  'coach:now', 'live:get', 'live:set', 'engine:status', 'engine:rebuild',
 ]);
 const EVENTS = new Set([
-  'update:status',
+  'update:status', 'engine:status', 'engine:stats', 'live:state',
   'settings:changed', 'comp:pinned', 'game:state', 'overlay:visible', 'overlay:clickThrough', 'riot:progress', 'meta:updated',
 ]);
 

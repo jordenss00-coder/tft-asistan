@@ -13,6 +13,9 @@ const liveClient = require('./src/services/liveClient');
 const accountDetect = require('./src/services/accountDetect');
 const { analyze } = require('./src/services/analysis');
 const { plan } = require('./src/services/planner');
+const { Collector } = require('./src/services/engine/collector');
+const { buildStats } = require('./src/services/engine/stats');
+const { coachNow } = require('./src/services/engine/index');
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const RENDERER = path.join(__dirname, 'src', 'renderer');
@@ -23,7 +26,7 @@ const EXTERNAL_HOSTS = new Set([
 ]);
 const SETTINGS_KEYS = [
   'riotId', 'platform', 'riotApiKey', 'geminiApiKey', 'geminiModel',
-  'overlayHotkey', 'clickThroughHotkey', 'autoOverlay', 'overlayOpacity', 'disabledSources', 'accountMode',
+  'overlayHotkey', 'clickThroughHotkey', 'autoOverlay', 'overlayOpacity', 'disabledSources', 'accountMode', 'engineAutoCollect',
 ];
 
 let mainWin = null;
@@ -32,6 +35,11 @@ let clickThrough = false;
 let gameState = { inGame: false, isTft: false, mode: '' };
 let lastAnalysis = null;
 let updateState = { status: 'idle' };
+let collector = null;
+let engineStats = null;
+let statsTimer = null;
+let statsBuilding = false;
+let liveState = {};
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -193,6 +201,65 @@ async function resolveAccount(selected) {
   throw new Error('Hesap algılanamadı. League/TFT istemcisini açık tut, listeden kayıtlı bir hesap seç ya da Ayarlar\'a yedek Riot ID gir.');
 }
 
+/* ── Kendi istatistik motoru ── */
+
+async function loadEngineStats() {
+  if (engineStats) return engineStats;
+  const S = await staticData.load();
+  engineStats = cache.read(`engine_stats_set${S.setNumber}`)?.data || null;
+  return engineStats;
+}
+
+function engineSummary() {
+  const st = engineStats;
+  if (!st) return null;
+  return {
+    builtAt: st.builtAt,
+    matches: st.matches,
+    patches: st.patches,
+    comps: st.comps.filter((c) => c.n >= 30).slice(0, 12)
+      .map((c) => ({ name: c.name, n: c.n, avg: c.avg, top4: c.top4, carry: c.carry, trait: c.trait })),
+    augments: Object.entries(st.augments).filter(([, a]) => a.n >= 30)
+      .sort((a, b) => a[1].smoothed - b[1].smoothed).slice(0, 12)
+      .map(([id, a]) => ({ id, n: a.n, avg: a.avg })),
+  };
+}
+
+async function rebuildStats() {
+  if (statsBuilding || !collector) return engineStats;
+  statsBuilding = true;
+  try {
+    const S = await staticData.load();
+    const m = await loadMeta().catch(() => null);
+    engineStats = buildStats({ file: collector.file(S.setNumber), S, metaComps: m?.comps || [] });
+    cache.write(`engine_stats_set${S.setNumber}`, engineStats);
+    broadcast('engine:stats', engineSummary());
+    return engineStats;
+  } finally {
+    statsBuilding = false;
+  }
+}
+
+function scheduleStatsRebuild(delay = 20000) {
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(() => rebuildStats().catch((e) => console.error('İstatistik hatası:', e.message)), delay);
+}
+
+async function initEngine() {
+  const S = await staticData.load();
+  collector = new Collector({
+    getSettings: () => store.get(),
+    getSetNumber: () => S.setNumber,
+    onStatus: (s) => broadcast('engine:status', s),
+    onNewMatches: () => scheduleStatsRebuild(),
+  });
+  collector.load();
+  await loadEngineStats();
+  if (collector.status().matches && (!engineStats || Date.now() - engineStats.builtAt > 60 * 60 * 1000)) scheduleStatsRebuild(30000);
+  const s = store.get();
+  if (s.engineAutoCollect && s.riotApiKey) collector.start();
+}
+
 async function loadMeta(force = false) {
   const S = await staticData.load();
   return meta.getComps(S, force, store.get().disabledSources || []);
@@ -227,6 +294,11 @@ function registerIpc() {
     if (partial.clearGeminiKey) clean.geminiApiKey = '';
     store.set(clean);
     if (clean.overlayOpacity !== undefined && overlayWin) overlayWin.setOpacity(clampOpacity(clean.overlayOpacity));
+    if (collector) {
+      const s = store.get();
+      if (s.engineAutoCollect && s.riotApiKey) collector.start();
+      else if (!s.engineAutoCollect) collector.stop();
+    }
     const failedHotkeys = registerHotkeys();
     const pub = store.getPublic();
     broadcast('settings:changed', pub);
@@ -265,7 +337,7 @@ function registerIpc() {
     const data = await riot.getRecentMatches({ ...store.get(), ...acc }, n, (p) => {
       if (!event.sender.isDestroyed()) event.sender.send('riot:progress', p);
     });
-    lastAnalysis = analyze({ ...data, S, metaComps: m?.comps || [] });
+    lastAnalysis = analyze({ ...data, S, metaComps: m?.comps || [], stats: await loadEngineStats() });
     cache.write('last_analysis', lastAnalysis);
     return lastAnalysis;
   });
@@ -275,11 +347,43 @@ function registerIpc() {
     return lastAnalysis;
   });
 
-  handle('coach:ask', async ({ question, history, includeAnalysis = true } = {}) => {
+  handle('coach:ask', async ({ question, history, includeAnalysis = true, includeLive = false } = {}) => {
     const S = await staticData.load();
     const m = await loadMeta().catch(() => null);
     if (!lastAnalysis) lastAnalysis = cache.read('last_analysis')?.data || null;
-    return coach.ask({ settings: store.get(), S, meta: m, analysis: includeAnalysis ? lastAnalysis : null, question, history });
+    const stats = await loadEngineStats();
+    const live = includeLive && liveState.stage
+      ? { state: liveState, advice: coachNow({ S, metaComps: m?.comps || [], stats, state: liveState }) }
+      : null;
+    return coach.ask({
+      settings: store.get(), S, meta: m, analysis: includeAnalysis ? lastAnalysis : null,
+      engine: engineSummary(), live, question, history,
+    });
+  });
+
+  handle('coach:now', async (state = {}) => {
+    const S = await staticData.load();
+    const m = await loadMeta().catch(() => null);
+    return coachNow({ S, metaComps: m?.comps || [], stats: await loadEngineStats(), state });
+  });
+
+  handle('live:get', () => liveState);
+  handle('live:set', (patch = {}, event) => {
+    liveState = { ...liveState, ...patch };
+    for (const w of [mainWin, overlayWin]) {
+      if (w && !w.isDestroyed() && w.webContents !== event.sender) w.webContents.send('live:state', liveState);
+    }
+    return liveState;
+  });
+
+  handle('engine:status', () => ({
+    ...(collector ? collector.status() : { running: false, matches: 0 }),
+    autoCollect: store.get().engineAutoCollect,
+    stats: engineSummary(),
+  }));
+  handle('engine:rebuild', async () => {
+    await rebuildStats();
+    return engineSummary();
   });
 
   handle('gemini:models', () => {
@@ -333,7 +437,11 @@ app.whenReady().then(() => {
     if (isTft && !wasTft) detectAccount().catch(() => {});
   });
 
-  staticData.load().then(() => loadMeta()).catch((e) => console.error('Ön yükleme hatası:', e.message));
+  staticData.load()
+    .then(() => loadMeta())
+    .catch((e) => console.error('Ön yükleme hatası:', e.message))
+    .then(() => initEngine())
+    .catch((e) => console.error('Motor başlatılamadı:', e.message));
 });
 
 app.on('second-instance', () => {
@@ -344,5 +452,6 @@ app.on('second-instance', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  collector?.stop();
   liveClient.stop();
 });

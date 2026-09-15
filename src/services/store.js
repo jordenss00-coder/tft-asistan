@@ -20,9 +20,13 @@ const DEFAULTS = {
   pinnedCompId: null,
   pinnedComp: null,
   disabledSources: [],
+  engineAutoCollect: true,
 };
 
 let state = null;
+// Şifresi çözülemeyen anahtarlar (ör. uygulama farklı bir klasöre kurulduysa) silinmez, korunur.
+const unreadable = new Set();
+const rawEncrypted = {};
 
 const file = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -41,7 +45,12 @@ function load() {
   } catch { /* ilk çalıştırma */ }
   const s = { ...DEFAULTS };
   for (const [k, v] of Object.entries(raw)) if (k in DEFAULTS) s[k] = v;
-  for (const k of SECRETS) if (raw[`${k}__enc`]) s[k] = decrypt(raw[`${k}__enc`]);
+  for (const k of SECRETS) {
+    if (!raw[`${k}__enc`]) continue;
+    rawEncrypted[k] = raw[`${k}__enc`];
+    s[k] = decrypt(raw[`${k}__enc`]);
+    if (!s[k]) unreadable.add(k);
+  }
   return s;
 }
 
@@ -49,7 +58,10 @@ function persist() {
   const out = {};
   for (const [k, v] of Object.entries(state)) {
     if (!SECRETS.includes(k)) { out[k] = v; continue; }
-    if (!v) continue;
+    if (!v) {
+      if (unreadable.has(k) && rawEncrypted[k]) out[`${k}__enc`] = rawEncrypted[k];
+      continue;
+    }
     // API anahtarları Windows DPAPI ile şifrelenerek saklanır.
     if (safeStorage.isEncryptionAvailable()) out[`${k}__enc`] = safeStorage.encryptString(v).toString('base64');
     else out[k] = v;
@@ -64,14 +76,23 @@ function get() {
 }
 
 function set(partial) {
-  state = { ...get(), ...partial };
+  get();
+  // Yeni değer girilen ya da açıkça silinen anahtar artık "okunamayan" sayılmaz.
+  for (const k of SECRETS) if (partial[k] !== undefined) { unreadable.delete(k); delete rawEncrypted[k]; }
+  state = { ...state, ...partial };
   persist();
   return state;
 }
 
 function getPublic() {
   const { riotApiKey, geminiApiKey, overlayBounds, ...rest } = get();
-  return { ...rest, hasRiotKey: !!riotApiKey, hasGeminiKey: !!geminiApiKey };
+  return {
+    ...rest,
+    hasRiotKey: !!riotApiKey,
+    hasGeminiKey: !!geminiApiKey,
+    riotKeyUnreadable: unreadable.has('riotApiKey'),
+    geminiKeyUnreadable: unreadable.has('geminiApiKey'),
+  };
 }
 
 module.exports = { get, set, getPublic };
