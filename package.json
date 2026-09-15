@@ -40,6 +40,7 @@
       "signAndEditExecutable": false
     },
     "nsis": {
+      "artifactName": "TFT-Asistan-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
