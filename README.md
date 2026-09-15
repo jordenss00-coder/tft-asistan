@@ -1,0 +1,84 @@
+# TFT Asistan
+
+Teamfight Tactics için masaüstü asistan: güncel meta comp'lar, trait planlayıcı ("11 Çiçek nasıl yapılır?"), maç geçmişi analizi, Gemini tabanlı AI koç ve oyun içi overlay.
+
+## Kurulum (kullanıcılar için)
+
+1. [Releases](https://github.com/jordenss00-coder/tft-asistan/releases/latest) sayfasından `TFT Asistan Setup x.y.z.exe` dosyasını indir ve çalıştır.
+2. Windows "kişisel bilgisayarınızı korudu" uyarısı gösterirse **Ek bilgi → Yine de çalıştır**'a tıkla (uygulama imzasız).
+3. Kurulumdan sonra güncellemeler otomatik gelir: uygulama açılışta ve 4 saatte bir yeni sürümü kontrol eder, arka planda indirir. Sol alttaki **Yeniden başlat ve güncelle** butonuyla ya da uygulamayı kapatınca kurulur.
+
+Her kullanıcı kendi Riot ve Gemini API anahtarını Ayarlar'dan girer. Anahtarlar yalnızca o bilgisayarda saklanır.
+
+## Geliştirme
+
+```bash
+npm install
+npm start
+```
+
+Gereksinim: Node.js 20+ (Windows).
+
+## Yeni sürüm yayınlama
+
+1. `package.json` içindeki `version` değerini artır (ör. `0.2.0` → `0.2.1`).
+2. Değişiklikleri commit'leyip GitHub'a gönder.
+3. Yayınla (GitHub CLI ile giriş yapılmış olmalı):
+
+```powershell
+$env:GH_TOKEN = gh auth token; npm run release
+```
+
+Bu komut kurulum dosyasını derler ve GitHub Releases'e yükler. Kurulu uygulamalar yeni sürümü kendiliğinden bulur.
+
+## Özellikler
+
+| Bölüm | Ne yapar |
+| --- | --- |
+| **Meta Comp'lar** | 6 kaynaktan gelen comp'ları birim benzerliğine göre birleştirir, her sitenin tier'ını yan yana gösterir. Carry eşyaları, erken board, stage ipuçları, güçlendirmeler ve TFT istemcisine yapıştırılabilir takım kodu içerir. |
+| **Comp Planlayıcı** | Bir trait'i hedef kademeye çıkarmak için gereken şampiyonları, amblem sayısını ve tarifini, seviye/slot ihtiyacını, adım adım yolu ve önerilen final board'u hesaplar. |
+| **Oynanış Analizi** | Riot API ile son maçlarını çeker: ortalama sıra, top 4, seviye ve altın alışkanlıkları, eşya toplama, comp/trait/güçlendirme performansı ve otomatik gelişim önerileri. |
+| **AI Koç** | Gemini ile Türkçe sohbet. Set verisi, birleşik meta, trait planı ve maç analizin bağlam olarak gönderilir. |
+| **Eşya Rehberi** | Bileşen tarif tablosu ve amblemler. |
+| **Overlay** | Oyunun üstünde duran panel: sabitlenen comp, meta listesi, hızlı trait planı ve eşya tablosu. TFT maçı başlayınca otomatik açılabilir. |
+
+## Veri kaynakları
+
+- **Set verisi (Türkçe):** CommunityDragon
+- **İstatistik:** MetaTFT, tactics.tools (Elmas+ maçlar)
+- **Rehber / tier listesi:** TFT Academy, lolchess.gg, TFT Flow, BunnyMuffins
+
+Kaynaklar Ayarlar'dan tek tek kapatılabilir. Veriler önbelleğe alınır (istatistik 1 saat, rehberler 3 saat, set verisi 12 saat). Bir site ulaşılamazsa son önbellek kullanılır. Bu siteler resmi bir API sunmadığı için sayfa yapıları değişirse ilgili kaynak "hata" olarak görünür, diğerleri çalışmaya devam eder.
+
+## API anahtarları
+
+- **Riot API:** [developer.riotgames.com](https://developer.riotgames.com/). Geliştirici anahtarları 24 saatte bir yenilenmelidir.
+- **Gemini API:** [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Varsayılan model `gemini-3.1-flash-lite`'tır (düşük maliyet). Ayarlar'daki "Modelleri getir" ile başka model seçilebilir.
+
+Anahtarlar `%APPDATA%\tft-asistan\settings.json` içinde Windows DPAPI ile şifrelenmiş olarak saklanır.
+
+## Overlay kullanımı
+
+- Varsayılan kısayollar: **Alt+T** overlay'i açar/kapatır, **Alt+Y** tıklama geçirgenliğini açar/kapatır (açıkken tıklamalar oyuna geçer).
+- Overlay'in oyunun üstünde görünmesi için TFT'yi **Kenarlıksız** veya **Pencereli** modda çalıştır. Tam ekran modunda görünmez.
+- Oyun algılama `127.0.0.1:2999` yerel istemci API'si üzerinden yapılır. Yalnızca oyun modu okunur.
+
+## Riot kurallarına uyum
+
+Overlay yalnızca kullanıcının kendi seçtiği comp'u, genel meta istatistiklerini ve plan bilgisini gösterir. Rakiplerin board'larını takip etmez, oyun belleğini okumaz, girdi otomasyonu yapmaz ve reklam içermez.
+
+## Proje yapısı
+
+```
+main.js                  Pencereler, overlay, kısayollar, IPC
+preload.js               Renderer'a açılan güvenli köprü
+src/services/
+  staticData.js          CommunityDragon set verisi + takım planlayıcı kodları
+  meta.js                Kaynak birleştirici
+  sources/*.js           Her site için veri okuyucu
+  planner.js             Trait planlayıcı
+  riot.js, analysis.js   Maç çekme ve oynanış analizi
+  gemini.js, coach.js    AI koç
+  liveClient.js          Oyun algılama
+src/renderer/            Ana pencere ve overlay arayüzü
+```

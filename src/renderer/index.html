@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://raw.communitydragon.org data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>TFT Asistan</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <div><b>TFT Asistan</b><small id="setLabel">Yükleniyor…</small></div>
+    </div>
+    <nav id="nav">
+      <button data-view="meta" class="active"><span>🏆</span>Meta Comp'lar</button>
+      <button data-view="planner"><span>🧩</span>Comp Planlayıcı</button>
+      <button data-view="analysis"><span>📈</span>Oynanış Analizi</button>
+      <button data-view="coach"><span>🤖</span>AI Koç</button>
+      <button data-view="items"><span>⚔️</span>Eşya Rehberi</button>
+      <button data-view="settings"><span>⚙️</span>Ayarlar</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="update-box" id="updateBox" hidden></div>
+      <div class="game-status" id="gameStatus"><i class="dot"></i><span>Oyun bekleniyor</span></div>
+      <button class="btn btn-block" id="overlayToggle">Overlay'i göster</button>
+      <small class="muted" id="hotkeyHint"></small>
+    </div>
+  </aside>
+  <main id="view" class="view"></main>
+  <div id="toasts"></div>
+  <script src="common.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

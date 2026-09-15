@@ -1,0 +1,59 @@
+{
+  "name": "tft-asistan",
+  "productName": "TFT Asistan",
+  "version": "0.2.0",
+  "author": "jordenss00-coder",
+  "description": "TFT meta comp'ları, trait planlayıcı, oynanış analizi, AI koç ve oyun içi overlay",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never",
+    "release": "electron-builder --win nsis --publish always"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jordenss00-coder/tft-asistan.git"
+  },
+  "build": {
+    "appId": "com.tftasistan.app",
+    "productName": "TFT Asistan",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jordenss00-coder",
+        "repo": "tft-asistan",
+        "releaseType": "release"
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TFT Asistan"
+    }
+  },
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://raw.communitydragon.org data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>TFT Asistan Overlay</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="overlay">
+  <div class="ov-shell">
+    <header class="ov-head">
+      <span class="ov-title">◆ TFT Asistan</span>
+      <i class="dot" id="ovGame" title="TFT maçı algılandığında yeşil yanar"></i>
+      <span class="ov-badge" id="ctBadge" hidden>Tıklama geçirgen</span>
+      <div class="ov-actions">
+        <button id="ovCt" title="Tıklama geçirgenliğini aç (kapatmak için kısayolu kullan)">👆</button>
+        <button id="ovClose" title="Gizle">✕</button>
+      </div>
+    </header>
+    <nav class="ov-tabs" id="ovTabs">
+      <button data-tab="comp" class="active">Comp</button>
+      <button data-tab="meta">Meta</button>
+      <button data-tab="trait">Trait</button>
+      <button data-tab="items">Eşya</button>
+    </nav>
+    <section class="ov-body" id="ovBody"></section>
+    <footer class="ov-foot"><small id="ovHint"></small></footer>
+  </div>
+  <div id="toasts"></div>
+  <script src="common.js"></script>
+  <script src="overlay.js"></script>
+</body>
+</html>
