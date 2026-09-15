@@ -14,6 +14,9 @@ const DEFAULT_REGIONS = {
   level: { x: 0.182, y: 0.817, w: 0.035, h: 0.024 },
   gold: { x: 0.534, y: 0.820, w: 0.038, h: 0.022 },
   hp: null,
+  // Sol taraftaki trait paneli (aktif özellikler ve sayıları) ve sağdaki oyuncu listesi (isim + can)
+  traits: { x: 0.054, y: 0.250, w: 0.086, h: 0.269 },
+  players: { x: 0.790, y: 0.190, w: 0.210, h: 0.580 },
   shop: [0, 1, 2, 3, 4].map((i) => ({ x: 0.287 + i * 0.106, y: 0.960, w: 0.075, h: 0.030 })),
 };
 
@@ -48,7 +51,10 @@ function getWorkers() {
       await word.setParameters({ tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: PSM.SINGLE_WORD });
       const text = await createWorker('tur', OEM.LSTM_ONLY, options);
       await text.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE });
-      return { digits, word, text };
+      // Çok satırlı paneller (trait listesi, oyuncu listesi) için blok modu
+      const block = await createWorker('tur', OEM.LSTM_ONLY, options);
+      await block.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      return { digits, word, text, block };
     })().catch((e) => {
       workersPromise = null;
       throw e;
@@ -110,7 +116,16 @@ function preprocess(image, r, { scale = 3, binarize = true } = {}) {
   return nativeImage.createFromBitmap(out, { width: outW, height: outH }).toPNG();
 }
 
-const normName = (s) => String(s || '').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü]/g, '');
+// Aksanları sadeleştirir (êŁßruž → elssruz) ki OCR'ın bozuk okuduğu isimler de eşleşebilsin.
+const normName = (s) => String(s || '')
+  .normalize('NFD')
+  .replace(/[̀-ͯ]/g, '')
+  .replace(/ß/gi, 'ss')
+  .replace(/[łŁ]/g, 'l')
+  .replace(/[đĐ]/g, 'd')
+  .replace(/[øØ]/g, 'o')
+  .toLocaleLowerCase('tr')
+  .replace(/[^a-zçğıöşü]/g, '');
 
 function levenshtein(a, b) {
   const row = Array.from({ length: b.length + 1 }, (_, j) => j);
@@ -124,6 +139,61 @@ function levenshtein(a, b) {
     }
   }
   return row[b.length];
+}
+
+function fuzzyMatch(text, candidates, { minLength = 3, threshold = 0.6 } = {}) {
+  const q = normName(text);
+  if (q.length < minLength) return null;
+  let best = null;
+  let bestScore = 0;
+  for (const c of candidates) {
+    const n = normName(c.name);
+    if (!n) continue;
+    const score = 1 - levenshtein(q, n) / Math.max(q.length, n.length);
+    if (score > bestScore) { bestScore = score; best = c; }
+  }
+  return bestScore >= threshold ? { ...best, score: bestScore } : null;
+}
+
+/** Sol paneldeki "3 Alev" gibi satırlardan aktif trait'leri ve sayılarını çıkarır. */
+function parseTraits(text, S) {
+  const candidates = S.traits.map((t) => ({ id: t.apiName, name: t.name }));
+  const out = [];
+  const seen = new Set();
+  for (const line of String(text || '').split('\n')) {
+    const clean = line.trim();
+    // Kademe satırları ("2 > 3 > 5 > 7") ve boş satırlar atlanır.
+    if (!clean || clean.includes('>') || !/[a-zçğıöşü]/i.test(clean)) continue;
+    const m = clean.match(/^\s*([0-9]{1,2}|[IiLl|!])?\s*(.+)$/);
+    if (!m) continue;
+    // Kısa adlarda (Alev, Fey) neredeyse birebir eşleşme istenir; uzun adlarda OCR hatasına tolerans tanınır.
+    const hit = fuzzyMatch(m[2], candidates, { minLength: 3, threshold: normName(m[2]).length <= 4 ? 0.85 : 0.7 });
+    if (!hit || seen.has(hit.id)) continue;
+    seen.add(hit.id);
+    const count = /^\d+$/.test(m[1] || '') ? Number(m[1]) : 1;
+    out.push({ apiName: hit.id, name: hit.name, count: Math.min(11, Math.max(1, count)) });
+  }
+  return out;
+}
+
+/** Sağdaki oyuncu listesinden kendi canını bulur (hesap adıyla eşleştirerek). */
+function parseOwnHp(text, ownName) {
+  if (!ownName) return null;
+  const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const target = normName(ownName);
+  if (target.length < 3) return null;
+  for (let i = 0; i < lines.length; i++) {
+    const nameOnly = lines[i].replace(/\d+/g, '');
+    const n = normName(nameOnly);
+    if (!n) continue;
+    const score = 1 - levenshtein(target, n) / Math.max(target.length, n.length);
+    if (score < 0.55) continue;
+    for (const candidate of [lines[i], lines[i + 1], lines[i - 1]]) {
+      const hp = String(candidate || '').match(/\b(\d{1,3})\b/);
+      if (hp && Number(hp[1]) >= 1 && Number(hp[1]) <= 100) return Number(hp[1]);
+    }
+  }
+  return null;
 }
 
 function matchChampion(text, S) {
@@ -143,8 +213,8 @@ function matchChampion(text, S) {
 }
 
 /** Görüntüden oyuncunun kendi değerlerini okur. Güveni düşük değerler null döner. */
-async function read(image, regions, S) {
-  const { digits, word, text } = await getWorkers();
+async function read(image, regions, S, { ownName = null } = {}) {
+  const { digits, word, text, block } = await getWorkers();
   const out = { at: Date.now(), raw: {}, confidence: {}, shop: [] };
 
   const recognize = async (worker, key, png) => {
@@ -193,6 +263,21 @@ async function read(image, regions, S) {
     if (m && data.confidence >= 25) out.stage = `${m[1]}-${m[2]}`;
   }
 
+  out.traits = [];
+  if (regions.traits) {
+    const data = await block.recognize(preprocess(image, regions.traits, { scale: 3 }));
+    out.raw.traits = data.data.text.replace(/\n+/g, ' | ').trim();
+    out.confidence.traits = Math.round(data.data.confidence);
+    out.traits = parseTraits(data.data.text, S);
+  }
+
+  if (regions.players && ownName && out.hp == null) {
+    const data = await block.recognize(preprocess(image, regions.players, { scale: 2 }));
+    out.raw.players = data.data.text.replace(/\n+/g, ' | ').trim();
+    out.confidence.players = Math.round(data.data.confidence);
+    out.hp = parseOwnHp(data.data.text, ownName);
+  }
+
   for (let i = 0; i < (regions.shop || []).length; i++) {
     if (!regions.shop[i]) { out.shop.push(null); continue; }
     await recognize(text, `shop${i}`, preprocess(image, regions.shop[i]));
@@ -205,7 +290,7 @@ async function shutdown() {
   if (!workersPromise) return;
   const w = await workersPromise.catch(() => null);
   workersPromise = null;
-  await Promise.all([w?.digits, w?.word, w?.text].filter(Boolean).map((x) => x.terminate())).catch(() => {});
+  await Promise.all([w?.digits, w?.word, w?.text, w?.block].filter(Boolean).map((x) => x.terminate())).catch(() => {});
 }
 
-module.exports = { DEFAULT_REGIONS, capture, read, shutdown, matchChampion };
+module.exports = { DEFAULT_REGIONS, capture, read, shutdown, matchChampion, parseTraits, parseOwnHp };

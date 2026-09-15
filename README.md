@@ -41,7 +41,9 @@ Bu komut kurulum dosyasını derler ve GitHub Releases'e yükler. Kurulu uygulam
 | **AI Koç** | Gemini ile Türkçe sohbet. Set verisi, birleşik meta, trait planı ve maç analizin bağlam olarak gönderilir. |
 | **Canlı Koç** | Oyundaki durumunu (stage, seviye, altın, can, seri, bileşenler, eşyalar, güçlendirmeler, birimler) girersin; ekonomi/seviye/roll kararı, sana en uygun comp'lar, bileşenlerden hangi eşyanın yapılıp kime verileceği ve board gücü kontrolü anında hesaplanır. Overlay'deki Koç sekmesiyle eşzamanlıdır. |
 | **Kendi istatistik motoru** | Riot API ile sunucundaki Challenger/Grandmaster/Master dereceli maçlarını arka planda toplar; birim, yıldız, eşya (birim üzerinde), güçlendirme, trait ve comp başarılarını sitelerden bağımsız hesaplar. Canlı Koç ve maç analizi bu veriyi kullanır. |
-| **Eşya Rehberi** | Bileşen tarif tablosu ve amblemler. |
+| **Comp detayı** | Board yerleşimi (4×7 altıgen, TFT Academy rehberinden), seviye 4-5'ten 9-10'a kadar board planı, comp'taki **her birimin** önerilen eşyaları, kaynak bazlı istatistikler ve tıklanabilir trait detayları. |
+| **Eşya Rehberi** | Eşyalar yüksek elo başarısına göre sıralı: ortalama sıra, top 4, oynanma ve **en iyi taşıyıcılar**. Eşyaya tıklayınca açıklama, tarif, taşıyıcı listesi ve o eşyayı kullanan comp'lar. Bileşen birleşim tablosu da ayrı bölümde durur. |
+| **Trait detayı** | Kademe etkileri, kademe bazlı ortalama sıra/top 4, trait'in şampiyonları, amblem tarifi ve "bu trait nasıl oynanır?" için AI koça kısayol. |
 | **Overlay** | Oyunun üstünde duran panel: sabitlenen comp, meta listesi, hızlı trait planı ve eşya tablosu. TFT maçı başlayınca otomatik açılabilir. |
 
 ## Ekran okuma (deneysel)

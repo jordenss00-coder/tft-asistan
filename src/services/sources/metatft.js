@@ -6,7 +6,7 @@ const RANKS = 'CHALLENGER,GRANDMASTER,MASTER,DIAMOND';
 
 const parseList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
-function pickCarries(builds) {
+function unitBuilds(builds) {
   const byUnit = new Map();
   for (const b of builds || []) {
     if (!b.unit || !Array.isArray(b.buildName) || !b.buildName.length) continue;
@@ -16,10 +16,7 @@ function pickCarries(builds) {
     if (score > e.bestScore) { e.best = b; e.bestScore = score; }
     byUnit.set(b.unit, e);
   }
-  return [...byUnit.values()]
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 3)
-    .map((e) => ({ unit: e.unit, items: e.best.buildName }));
+  return [...byUnit.values()].sort((a, b) => b.total - a.total);
 }
 
 function parseAugments(top) {
@@ -72,12 +69,14 @@ module.exports = {
       const st = statMap.get(String(id));
       const places = st?.places?.slice(0, 8) || null;
       const count = st?.count || (places ? places.reduce((a, b) => a + b, 0) : 0);
+      const builds = unitBuilds(c.builds);
       const e = {
         id: `metatft:${id}`,
         name: compName(c, S, units),
         units,
         stars: Array.isArray(c.stars) ? c.stars.filter((u) => units.includes(u)) : [],
-        carries: pickCarries(c.builds),
+        carries: builds.slice(0, 3).map((b) => ({ unit: b.unit, items: b.best.buildName })),
+        itemsByUnit: builds.map((b) => ({ unit: b.unit, items: b.best.buildName, avg: b.best.avg, n: b.best.count, source: 'MetaTFT' })),
         augments: parseAugments(c.top_augments),
         levelling: c.levelling || '',
         count,

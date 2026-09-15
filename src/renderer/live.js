@@ -3,7 +3,7 @@
 
 const LIVE_DEFAULT = {
   stage: '2-1', level: 4, xp: 0, gold: 10, hp: 100, streak: 0,
-  components: [], completed: [], augments: [], units: [], compId: '',
+  components: [], completed: [], augments: [], units: [], traits: [], compId: '',
 };
 
 const Live = {
@@ -34,6 +34,7 @@ const Live = {
         if (r.level != null && r.level !== this.state.level) patch.level = r.level;
         if (r.stage && r.stage !== this.state.stage) patch.stage = r.stage;
         if (r.hp != null && r.hp !== this.state.hp) patch.hp = r.hp;
+        if (r.traits?.length && JSON.stringify(r.traits) !== JSON.stringify(this.state.traits)) patch.traits = r.traits;
         if (Object.keys(patch).length) this.set(patch, { render: true });
       }
       this.emit('ocr');
@@ -135,7 +136,9 @@ function liveFormHtml(S, st, metaComps, compact) {
     ${pickerBlock('augments', 'Güçlendirmeler', st.augments.map(itemChip('augments')))}
     ${pickerBlock('units', 'Birimlerin (board + yedek) <small class="muted">· yıldıza tıkla</small>', st.units.map(unitChip))}
     ${compact ? '' : `<label class="live-target">Hedef comp<select data-field="compId"><option value="">Otomatik (en uygun öneri)</option>${metaComps.filter((c) => c.units.length).map((c) => `<option value="${esc(c.id)}" ${c.id === st.compId ? 'selected' : ''}>[${esc(c.tier)}] ${esc(c.name)}</option>`).join('')}</select></label>`}
+    ${st.traits?.length ? `<div class="live-block"><div class="label">Ekrandan okunan trait'lerin</div><div class="trait-row">${st.traits.map((t) => `<span class="trait trait-low"><b>${t.count}</b>${esc(t.name)}</span>`).join('')}</div></div>` : ''}
     <div class="actions-row">
+      <button type="button" class="btn btn-sm" data-act="live-read" title="Oyun penceresini şimdi oku (algılama beklemeden)">📷 Şimdi oku</button>
       <button type="button" class="btn btn-sm btn-ghost" data-act="live-next" title="Stage'i bir tur ilerletir ve beklenen geliri altına ekler">Sonraki tur ›</button>
       <button type="button" class="btn btn-sm btn-ghost" data-act="live-reset">Sıfırla</button>
     </div>
@@ -242,6 +245,12 @@ function bindLiveForm(root, ctx) {
       Live.set({ stage: stepStage(st.stage, 1), gold: st.gold + income }, { render: true });
     } else if (t.dataset.act === 'live-reset') {
       Live.reset();
+    } else if (t.dataset.act === 'live-read') {
+      t.disabled = true;
+      call('ocr:now')
+        .then((r) => toast(r ? 'Ekran okundu.' : 'Oyun penceresi bulunamadı.', r ? 'good' : 'warn'))
+        .catch((err) => toast(err.message, 'bad', 7000))
+        .finally(() => { t.disabled = false; });
     }
   });
 }

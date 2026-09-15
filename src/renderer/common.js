@@ -105,6 +105,42 @@ function copyTeamCode(code) {
     .catch((e) => toast(e.message, 'bad'));
 }
 
+/** 4 sıra × 7 altıgen board. boardIndex 0-6 ön sıra (düşmana en yakın). */
+function boardGrid(S, positions, { compact = false } = {}) {
+  const byIndex = new Map((positions || []).map((p) => [p.index, p]));
+  let rows = '';
+  for (let row = 0; row < 4; row++) {
+    let cells = '';
+    for (let col = 0; col < 7; col++) {
+      const p = byIndex.get(row * 7 + col);
+      cells += `<div class="hex ${p ? 'filled' : ''}">${p ? unitIcon(S, p.unit, { size: compact ? 'xs' : 'sm', noName: true, items: p.items, star: p.star }) : ''}</div>`;
+    }
+    rows += `<div class="hex-row ${row % 2 ? 'odd' : ''}">${cells}</div>`;
+  }
+  return `<div class="board"><div class="board-side">Ön sıra (düşmana yakın)</div>${rows}<div class="board-side">Arka sıra</div></div>`;
+}
+
+function openModal(html) {
+  const el = $('#modal');
+  if (!el) return;
+  el.innerHTML = `<div class="modal-backdrop" data-close-modal></div><div class="modal-box"><button class="modal-close" data-close-modal>✕</button><div class="modal-body">${html}</div></div>`;
+  el.hidden = false;
+}
+
+function closeModal() {
+  const el = $('#modal');
+  if (!el) return;
+  el.hidden = true;
+  el.innerHTML = '';
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-close-modal]')) closeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
 function md(src) {
   const inline = (s) => s
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')

@@ -89,7 +89,7 @@ function unitsOf(comp, owned, S, phase) {
  * Oyuncunun eşyaları, güçlendirmeleri, birimleri ve oyun aşamasına göre en uygun comp'ları sıralar.
  * Kural gereği tek bir karar dayatmaz; gerekçeleriyle birden fazla seçenek sunar.
  */
-function recommendComps({ S, metaComps, stats = null, state }) {
+function recommendComps({ S, metaComps, stats = null, unitStats = null, state }) {
   const st = parseStage(state.stage);
   const phase = !st || st.stage <= 2 ? 'early' : st.stage === 3 ? 'mid' : 'late';
   const W = WEIGHTS[phase];
@@ -104,7 +104,7 @@ function recommendComps({ S, metaComps, stats = null, state }) {
     .filter((c) => c.units?.length >= 5)
     .map((comp) => {
       const strength = strengthOf(comp, stats);
-      const itemPlan = adviseItems({ S, stats, comp, components, completed, stage: state.stage });
+      const itemPlan = adviseItems({ S, stats, unitStats, comp, components, completed, stage: state.stage });
       const carryIds = new Set(comp.carries.map((c) => c.unit));
       // Her eşya, değerine (istatistik kazancı / rehber uyumu) ve carry'ye gidip gitmediğine göre katkı verir.
       const useful = [...itemPlan.crafts, ...itemPlan.assignments].filter((x) => x.holder && x.value > 0.2);
@@ -116,6 +116,18 @@ function recommendComps({ S, metaComps, stats = null, state }) {
       const aug = augmentsOf(comp, augments, S, stats);
       const units = unitsOf(comp, owned, S, phase);
 
+      // Ekrandan okunan aktif trait'ler: sahadaki board'unla uyumlu comp'lar öne çıkar.
+      let traitBonus = 0;
+      const traitReasons = [];
+      if (state.traits?.length) {
+        const compTraits = new Map((comp.traits || []).map((t) => [t.apiName, t.count]));
+        const matched = state.traits.filter((t) => compTraits.has(t.apiName));
+        const covered = matched.reduce((sum, t) => sum + Math.min(t.count, compTraits.get(t.apiName)), 0);
+        const total = state.traits.reduce((sum, t) => sum + t.count, 0) || 1;
+        traitBonus = clamp(covered / total) * 0.12;
+        if (matched.length) traitReasons.push(`sahadaki trait'lerinle uyumlu: ${matched.slice(0, 3).map((t) => `${t.count} ${t.name}`).join(', ')}`);
+      }
+
       let penalty = 0;
       const warnings = [];
       const plan = planFromLevelling(comp.levelling);
@@ -125,7 +137,7 @@ function recommendComps({ S, metaComps, stats = null, state }) {
         warnings.push('Reroll birimlerine sahip değilsin; bu aşamada geç kalınmış olabilir');
       }
 
-      const score = W.strength * strength.score + W.items * items.score + W.augments * aug.score + W.units * units.score - penalty;
+      const score = W.strength * strength.score + W.items * items.score + W.augments * aug.score + W.units * units.score + traitBonus - penalty;
       return {
         id: comp.id,
         name: comp.name,
@@ -141,7 +153,7 @@ function recommendComps({ S, metaComps, stats = null, state }) {
           augments: Math.round(aug.score * 100),
           units: Math.round(units.score * 100),
         },
-        reasons: [...units.reasons, ...items.reasons, ...aug.reasons, ...strength.reasons],
+        reasons: [...traitReasons, ...units.reasons, ...items.reasons, ...aug.reasons, ...strength.reasons],
         warnings,
         itemPlan: { crafts: itemPlan.crafts.slice(0, 4), missing: itemPlan.missing.slice(0, 4), hold: itemPlan.hold },
       };

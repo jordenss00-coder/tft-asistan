@@ -42,6 +42,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function bindShell() {
+  $('#modal').addEventListener('click', (e) => {
+    const ask = e.target.closest('[data-ask-trait]');
+    if (!ask) return;
+    closeModal();
+    askCoach(`${ask.dataset.askTrait} trait'i nasıl çalışır ve nasıl oynanır? Mekaniklerini (ödüller, tetiklenme, ne zaman ve nerede kullanılacağı), hangi kademelerin güçlü olduğunu, hangi comp'larda oynandığını ve dikkat edilmesi gerekenleri anlat.`);
+  });
   $('#nav').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-view]');
     if (b && state.S) show(b.dataset.view);
@@ -100,6 +106,10 @@ async function boot() {
   }
   call('riot:lastAnalysis').then((a) => { state.analysis = a; }).catch(() => {});
   call('engine:status').then((s) => { state.engine = s; renderEngineStatus(); }).catch(() => {});
+  call('stats:units').then((u) => {
+    state.unitStats = u;
+    if (state.view === 'items') renderItems();
+  }).catch(() => {});
   state.liveCtx = { S: state.S, getMeta: () => state.meta, compact: false, refocus: null };
   await Live.init();
   Live.on((type) => {
@@ -290,6 +300,70 @@ function compCard(c) {
   </article>`;
 }
 
+/** Erken oyundan 9-10. seviyeye kadar board planı. */
+function levelPlanHtml(S, c) {
+  const carries = new Set(c.carries.map((x) => x.unit));
+  const ordered = [...c.units].sort((a, b) =>
+    (carries.has(b) ? 1 : 0) - (carries.has(a) ? 1 : 0) || (S.champById[a]?.cost || 0) - (S.champById[b]?.cost || 0));
+  const early = c.guide?.early?.length ? c.guide.early : ordered.filter((u) => (S.champById[u]?.cost || 9) <= 2).slice(0, 4);
+  const cap = c.maxCap || [];
+  const step = (title, hint, units, extra = '') => `<div class="level-step">
+    <div class="ms-head"><b>${esc(title)}</b>${hint ? `<span class="tag">${esc(hint)}</span>` : ''}</div>
+    <div class="unit-row tight">${sortUnits(S, units).map((u) => unitIcon(S, u, { size: 'xs' })).join('')}</div>${extra}</div>`;
+  return `<div class="level-plan">
+    ${early.length ? step('Seviye 4-5 · erken oyun', 'Stage 2', early) : ''}
+    ${step('Seviye 6', 'Stage 3', ordered.slice(0, 6))}
+    ${step('Seviye 7', 'Stage 4 başı', ordered.slice(0, 7))}
+    ${step('Seviye 8 · final board', c.levelling || '', c.units)}
+    ${cap.length ? step('Seviye 9-10 · ek birimler', 'Geç oyun', cap.map((x) => x.unit),
+    `<p class="muted small">${cap.map((x) => `${esc(S.champById[x.unit]?.name || x.unit)}${x.replaces?.length ? ` → ${x.replaces.map((r) => esc(S.champById[r]?.name || r)).join(', ')} yerine girer` : ''}`).join(' · ')}</p>`) : ''}
+  </div>`;
+}
+
+/** Comp'taki her birim için önerilen eşyalar (rehber + istatistik kaynakları). */
+function unitItemsHtml(S, c) {
+  const us = state.unitStats;
+  const byUnit = new Map((c.itemsByUnit || []).map((x) => [x.unit, x]));
+  return `<div class="unit-items-list">${sortUnits(S, c.units).map((u) => {
+    const rec = byUnit.get(u);
+    const site = us?.units?.[u];
+    const items = rec?.items?.length ? rec.items : (site?.topItems || []).slice(0, 3);
+    const source = rec?.source || (site ? 'tactics.tools' : null);
+    return `<div class="unit-item-row">${unitIcon(S, u, { size: 'sm', noName: true })}
+      <div class="grow"><b>${esc(S.champById[u]?.name || u)}</b>
+        ${site ? `<small class="muted"> ort. ${num(site.avg)} · top 4 ${pct(site.top4)}${site.star3 ? ` · 3★ ort. ${num(site.star3.avg)}` : ''}</small>` : ''}
+        <div class="item-row">${items.length
+      ? items.map((i) => `<span class="item-chip">${itemIcon(S, i, 'sm')}${esc(itemName(S, i))}</span>`).join('')
+      : '<span class="muted small">bu birim için eşya önerisi yok (tank/yardımcı olabilir)</span>'}</div></div>
+      ${source ? `<small class="muted src-note">${esc(source)}</small>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+
+function openTraitModal(traitId) {
+  const S = state.S;
+  const t = S.traitsById[traitId];
+  if (!t) return;
+  const stats = state.unitStats?.traits?.[traitId] || {};
+  const seen = new Set();
+  const units = S.champions.filter((c) => c.traits.includes(traitId) && !seen.has(c.baseName) && seen.add(c.baseName));
+  const comps = (state.meta?.comps || []).filter((c) => c.traits?.some((x) => x.apiName === traitId && x.tierIndex > 0)).slice(0, 6);
+  openModal(`
+    <div class="modal-head">${t.icon ? `<img src="${esc(t.icon)}" class="trait-icon-lg" alt="">` : ''}
+      <div><h2>${esc(t.name)}</h2><p class="muted pre">${esc(t.summary)}</p></div></div>
+    <h4>Kademeler ve etkileri</h4>
+    <table class="tbl"><thead><tr><th>Sayı</th><th>Etki</th><th>Ort. sıra</th><th>Top 4</th><th>Oyun</th></tr></thead><tbody>
+      ${t.tiers.map((tier) => {
+    const s = stats[String(tier.minUnits)];
+    return `<tr><td><b>${tier.minUnits}</b></td><td class="pre">${esc(tier.text)}</td><td>${s ? num(s.avg) : '–'}</td><td>${s ? pct(s.top4) : '–'}</td><td>${s ? Number(s.count).toLocaleString('tr-TR') : '–'}</td></tr>`;
+  }).join('')}
+    </tbody></table>
+    <h4>Şampiyonlar</h4><div class="unit-row">${units.map((c) => unitIcon(S, c.apiName, { size: 'sm' })).join('')}</div>
+    ${t.emblem ? `<h4>Amblem</h4><div class="item-row"><span class="item-chip">${itemIcon(S, t.emblem.apiName, 'sm')}${esc(t.emblem.name)}</span>
+      <span class="muted small">${t.emblem.from.length ? `= ${t.emblem.from.map((f) => esc(itemName(S, f))).join(' + ')}` : 'eşyayla yapılamaz'}</span></div>` : ''}
+    ${comps.length ? `<h4>Bu trait'i kullanan comp'lar</h4><ul class="reasons">${comps.map((c) => `<li>${tierBadge(c.tier)} ${esc(c.name)} <span class="muted">${esc(c.levelling || '')}</span></li>`).join('')}</ul>` : ''}
+    <div class="actions-row"><button class="btn btn-sm btn-gold" data-ask-trait="${esc(t.name)}">🤖 ${esc(t.name)} nasıl oynanır?</button></div>`);
+}
+
 function compDetail(c) {
   const S = state.S;
   const g = c.guide;
@@ -304,21 +378,32 @@ function compDetail(c) {
     ${g?.early?.length ? `<div class="label">Erken board</div><div class="unit-row">${g.early.map((u) => unitIcon(S, u, { size: 'sm' })).join('')}</div>` : ''}
     ${g?.tips?.length ? `<ul class="tips">${g.tips.map((t) => `<li><b>${esc(t.stage)}</b> ${esc(t.tip)}</li>`).join('')}</ul><p class="muted small">İpuçları TFT Academy'den alınmıştır (İngilizce). Türkçe açıklama için "Nasıl oynanır?" butonunu kullan.</p>` : ''}
   </section>`);
-  if (c.carries.length) {
-    parts.push(`<section><h4>Carry eşyaları</h4>${c.carries.map((x) => `<div class="carry-row">${unitIcon(S, x.unit, { size: 'sm', noName: true })}<div><b>${esc(S.champById[x.unit]?.name || x.unit)}</b><div class="item-row">${x.items.map((i) => `<span class="item-chip">${itemIcon(S, i, 'sm')}${esc(itemName(S, i))}</span>`).join('')}</div></div></div>`).join('')}</section>`);
+  if (c.positions?.length) {
+    parts.push(`<section class="wide"><h4>Yerleşim</h4>${boardGrid(S, c.positions)}
+      <p class="muted small">Yerleşim TFT Academy rehberinden alınmıştır. Üst sıra düşmana en yakın ön sıradır.</p></section>`);
   }
+  parts.push(`<section class="wide"><h4>Seviye seviye board</h4>${levelPlanHtml(S, c)}</section>`);
+  parts.push(`<section class="wide"><h4>Birimler ve eşyaları</h4>${unitItemsHtml(S, c)}</section>`);
   if (c.augments.length) {
     parts.push(`<section><h4>Önerilen güçlendirmeler</h4><div class="aug-row">${c.augments.map((a) => `<span class="aug">${itemIcon(S, a, 'sm')}${esc(itemName(S, a))}</span>`).join('')}</div>${g?.augmentsTip ? `<p class="muted small">${esc(g.augmentsTip)}</p>` : ''}</section>`);
   }
   if (g?.carousel?.length) {
     parts.push(`<section><h4>Karuselde öncelik</h4><div class="item-row">${g.carousel.map((i) => `<span class="item-chip">${itemIcon(S, i, 'sm')}${esc(itemName(S, i))}</span>`).join('')}</div></section>`);
   }
-  if (c.traits.length) parts.push(`<section><h4>Trait'ler</h4><div class="trait-row">${c.traits.map(traitChip).join('')}</div></section>`);
+  if (c.traits.length) {
+    parts.push(`<section><h4>Trait'ler <small class="muted">(detay için tıkla)</small></h4>
+      <div class="trait-row">${c.traits.map((t) => `<button type="button" class="trait-btn" data-trait="${esc(t.apiName)}">${traitChip(t)}</button>`).join('')}</div></section>`);
+  }
   parts.push(`<section><h4>Kaynaklar</h4><div class="link-row">${c.sources.map((s) => `<button class="link" data-url="${esc(s.url)}">${esc(s.name)}: ${esc(s.title || '')}${s.tier ? ` (${esc(s.tier)})` : ''} ↗</button>`).join('')}</div></section>`);
   return `<div class="detail-grid">${parts.join('')}</div>`;
 }
 
 async function onCompClick(e) {
+  const traitBtn = e.target.closest('[data-trait]');
+  if (traitBtn) {
+    openTraitModal(traitBtn.dataset.trait);
+    return;
+  }
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
   const card = btn.closest('.comp');
@@ -745,45 +830,77 @@ async function sendChat(question) {
 
 function renderItems() {
   const S = state.S;
+  const us = state.unitStats;
   const comps = S.components;
   const recipe = (a, b) => S.recipes[[a, b].sort().join('|')];
   const emblems = S.traits.filter((t) => t.emblem).map((t) => t.emblem);
+  const rows = [...new Set(Object.values(S.recipes))]
+    .map((id) => ({ id, def: S.items[id], st: us?.items?.[id] }))
+    .filter((x) => x.def)
+    // Taşıyıcısı bilinen gerçek savaş eşyaları önce, sonra ortalama sıraya göre
+    .sort((a, b) => (b.st?.holders?.length ? 1 : 0) - (a.st?.holders?.length ? 1 : 0) || (a.st?.avg ?? 99) - (b.st?.avg ?? 99));
+
   $('#view').innerHTML = `
     <div id="itemsView">
       <header class="view-head">
-        <div><h1>Eşya Rehberi</h1><p class="muted">Bileşen birleşimleri. Ayrıntı için bir eşyaya tıkla.</p></div>
-        <div class="toolbar"><input id="itSearch" type="search" placeholder="Eşya ara…"></div>
+        <div><h1>Eşya Rehberi</h1>
+          <p class="muted">${us ? `Eşyalar yüksek elo başarısına göre sıralı · ${esc(us.source)} · ${Number(us.games).toLocaleString('tr-TR')} oyun` : 'Eşya istatistikleri yükleniyor…'}</p></div>
+        <div class="toolbar"><input id="itSearch" type="search" placeholder="Eşya veya şampiyon ara…"></div>
       </header>
-      <div class="items-layout">
-        <section class="card"><div class="table-wrap"><table class="recipe-grid">
-          <thead><tr><th></th>${comps.map((c) => `<th>${itemIcon(S, c, 'md')}</th>`).join('')}</tr></thead>
-          <tbody>${comps.map((a) => `<tr><th>${itemIcon(S, a, 'md')}</th>${comps.map((b) => {
-            const id = recipe(a, b);
-            return `<td>${id ? `<button class="cell" data-item="${esc(id)}" data-name="${esc(trLower(itemName(S, id)))}">${itemIcon(S, id, 'md')}</button>` : ''}</td>`;
-          }).join('')}</tr>`).join('')}</tbody>
-        </table></div></section>
-        <section class="card item-detail" id="itDetail"><p class="muted">Ayrıntıları görmek için tablodan bir eşya seç.</p></section>
-      </div>
+      <section class="card">
+        <h3>Eşya gücü ve en iyi taşıyıcılar</h3>
+        <div class="table-wrap"><table class="tbl item-table">
+          <thead><tr><th>Eşya</th><th>Tarif</th><th>Ort. sıra</th><th>Top 4</th><th>Oynanma</th><th>En iyi taşıyıcılar</th></tr></thead>
+          <tbody>${rows.map(({ id, def, st }) => `<tr data-item="${esc(id)}" data-hay="${esc(trLower(`${def.name} ${(st?.holders || []).map((h) => S.champById[h.unit]?.name || '').join(' ')}`))}">
+            <td><span class="item-chip">${itemIcon(S, id, 'sm')}${esc(def.name)}</span></td>
+            <td class="nowrap">${def.from.map((f) => itemIcon(S, f, 'xs')).join('')}</td>
+            <td class="${st && st.avg <= 4.2 ? 'ok' : ''}">${st ? num(st.avg) : '–'}</td>
+            <td>${st ? pct(st.top4) : '–'}</td>
+            <td>${st ? Number(st.count).toLocaleString('tr-TR') : '–'}</td>
+            <td><div class="unit-row tight">${(st?.holders || []).slice(0, 5).map((h) => unitIcon(S, h.unit, { size: 'xs', noName: true })).join('') || '<span class="muted small">veri yok</span>'}</div></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </section>
       <section class="card"><h3>Amblemler</h3><div class="emblem-grid">${emblems.map((e) => `
         <button class="emblem-card" data-item="${esc(e.apiName)}">${itemIcon(S, e.apiName, 'md')}<div><b>${esc(e.name)}</b><small class="muted">${e.from.length ? e.from.map((i) => esc(itemName(S, i))).join(' + ') : 'Eşyayla yapılamaz'}</small></div></button>`).join('')}</div></section>
+      <details class="card"><summary>Bileşen birleşim tablosu</summary>
+        <div class="table-wrap"><table class="recipe-grid">
+          <thead><tr><th></th>${comps.map((c) => `<th>${itemIcon(S, c, 'md')}</th>`).join('')}</tr></thead>
+          <tbody>${comps.map((a) => `<tr><th>${itemIcon(S, a, 'md')}</th>${comps.map((b) => {
+    const id = recipe(a, b);
+    return `<td>${id ? `<button class="cell" data-item="${esc(id)}">${itemIcon(S, id, 'md')}</button>` : ''}</td>`;
+  }).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+      </details>
     </div>`;
+
   $('#itSearch').addEventListener('input', (e) => {
     const q = trLower(e.target.value.trim());
-    $$('.recipe-grid .cell').forEach((c) => c.classList.toggle('dim', !!q && !c.dataset.name.includes(q)));
+    $$('.item-table tbody tr').forEach((tr) => { tr.hidden = !!q && !tr.dataset.hay.includes(q); });
   });
   $('#itemsView').addEventListener('click', (e) => {
     const b = e.target.closest('[data-item]');
-    if (b) $('#itDetail').innerHTML = itemDetail(b.dataset.item);
+    if (b) openModal(itemDetailHtml(b.dataset.item));
   });
 }
 
-function itemDetail(id) {
+function itemDetailHtml(id) {
   const S = state.S;
   const it = S.items[id];
   if (!it) return '<p class="muted">Eşya bulunamadı.</p>';
-  return `<div class="item-head">${itemIcon(S, id, 'lg')}<div><h3>${esc(it.name)}</h3>
-    ${it.from.length ? `<div class="recipe">${it.from.map((i) => `<span class="item-chip">${itemIcon(S, i, 'sm')}${esc(itemName(S, i))}</span>`).join('<span class="plus">+</span>')}</div>` : ''}</div></div>
-    <p class="pre">${esc(it.desc)}</p>`;
+  const st = state.unitStats?.items?.[id];
+  const comps = (state.meta?.comps || [])
+    .filter((c) => (c.itemsByUnit || []).some((x) => x.items.includes(id)) || c.carries.some((x) => x.items.includes(id)))
+    .slice(0, 6);
+  return `
+    <div class="modal-head">${itemIcon(S, id, 'lg')}<div><h2>${esc(it.name)}</h2>
+      ${it.from.length ? `<div class="recipe">${it.from.map((i) => `<span class="item-chip">${itemIcon(S, i, 'sm')}${esc(itemName(S, i))}</span>`).join('<span class="plus">+</span>')}</div>` : ''}</div></div>
+    <p class="pre">${esc(it.desc)}</p>
+    ${st ? `<div class="facts"><span class="fact"><small>Ort. sıra</small><b>${num(st.avg)}</b></span><span class="fact"><small>Top 4</small><b>${pct(st.top4)}</b></span><span class="fact"><small>1.lik</small><b>${pct(st.win)}</b></span><span class="fact"><small>Oynanma</small><b>${Number(st.count).toLocaleString('tr-TR')}</b></span></div>` : ''}
+    ${st?.holders?.length ? `<h4>En iyi taşıyıcılar</h4><div class="unit-items-list">${st.holders.map((h) => `<div class="unit-item-row">${unitIcon(S, h.unit, { size: 'sm', noName: true })}
+      <div class="grow"><b>${esc(S.champById[h.unit]?.name || h.unit)}</b> <small class="muted">birimin ort. sırası ${num(h.avg)}</small></div>
+      <small class="muted src-note">${h.rank + 1}. sırada önerilen</small></div>`).join('')}</div>` : ''}
+    ${comps.length ? `<h4>Bu eşyayı kullanan comp'lar</h4><ul class="reasons">${comps.map((c) => `<li>${tierBadge(c.tier)} ${esc(c.name)}</li>`).join('')}</ul>` : ''}`;
 }
 
 /* ───────────── Ayarlar ───────────── */

@@ -20,7 +20,7 @@ function emblemValue(item, comp, S) {
  * Değer, yüksek elo verisinde o birim + eşya ikilisinin ortalamaya (4,5) göre sıralama kazancıdır;
  * rehberin önerdiği eşyalar ek puan alır.
  */
-function itemValue(item, holders, { S, stats, comp }) {
+function itemValue(item, holders, { S, stats, comp, unitStats }) {
   const emblem = emblemValue(item, comp, S);
   if (emblem) return emblem;
 
@@ -28,8 +28,11 @@ function itemValue(item, holders, { S, stats, comp }) {
   holders.forEach((unit, idx) => {
     const weight = idx === 0 ? 1 : idx < 3 ? 0.85 : 0.6;
     const st = stats?.unitItems?.[unit]?.find((x) => x.item === item);
-    const guide = comp?.carries?.find((c) => c.unit === unit)?.items?.includes(item);
-    if (!st && !guide) return;
+    const guide = comp?.carries?.find((c) => c.unit === unit)?.items?.includes(item)
+      || comp?.itemsByUnit?.find((x) => x.unit === unit)?.items?.includes(item);
+    // Site verisi: birimin genel "en iyi eşyaları" listesi (sıraya göre ağırlıklı)
+    const siteRank = unitStats?.units?.[unit]?.topItems?.indexOf(item) ?? -1;
+    if (!st && !guide && siteRank < 0) return;
     let value = 0;
     const parts = [];
     if (st) {
@@ -39,6 +42,10 @@ function itemValue(item, holders, { S, stats, comp }) {
     if (guide) {
       value += 0.35 * weight;
       parts.push('rehberlerin önerdiği eşya');
+    }
+    if (siteRank >= 0) {
+      value += (0.32 - siteRank * 0.04) * weight;
+      parts.push(`bu birimin en çok işe yarayan eşyalarından (${siteRank + 1}. sırada)`);
     }
     if (value > best.value) best = { value, holder: unit, detail: parts.join(', ') };
   });
@@ -63,12 +70,12 @@ function holdersFor(comp, S) {
  * Bileşenlerden hangi eşyaların yapılacağını (en yüksek toplam değerli eşleştirme), hangi bileşenlerin
  * bekletileceğini ve tamamlanmış eşyaların kime verileceğini önerir.
  */
-function adviseItems({ S, stats = null, comp = null, components = [], completed = [], stage = null }) {
+function adviseItems({ S, stats = null, unitStats = null, comp = null, components = [], completed = [], stage = null }) {
   const holders = holdersFor(comp, S);
   const st = parseStage(stage);
   // Erken oyunda eşyayı hemen yapmak can ve seri kazandırır; bekletmenin maliyeti yüksektir.
   const tempo = !st ? 0 : st.index <= 11 ? 0.25 : st.stage === 3 ? 0.12 : 0;
-  const ctx = { S, stats, comp };
+  const ctx = { S, stats, comp, unitStats };
   const memo = new Map();
 
   const solve = (list) => {

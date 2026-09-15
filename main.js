@@ -17,6 +17,7 @@ const { Collector } = require('./src/services/engine/collector');
 const { buildStats } = require('./src/services/engine/stats');
 const { coachNow } = require('./src/services/engine/index');
 const screenReader = require('./src/services/ocr/screenReader');
+const { getUnitStats } = require('./src/services/unitStats');
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const RENDERER = path.join(__dirname, 'src', 'renderer');
@@ -209,16 +210,25 @@ async function resolveAccount(selected) {
 
 const ocrRegions = () => store.get().ocrRegions || screenReader.DEFAULT_REGIONS;
 
-async function ocrTick() {
-  if (ocrBusy) return;
+function ownGameName() {
+  const s = store.get();
+  const id = s.accounts?.[0]?.riotId || s.riotId || '';
+  return id.split('#')[0].trim() || null;
+}
+
+async function ocrTick({ allowScreen = false } = {}) {
+  if (ocrBusy) return null;
   ocrBusy = true;
   try {
     const cap = await screenReader.capture();
-    if (cap.source !== 'game') return;
-    const reading = await screenReader.read(cap.image, ocrRegions(), await staticData.load());
+    if (cap.source !== 'game' && !allowScreen) return null;
+    const reading = await screenReader.read(cap.image, ocrRegions(), await staticData.load(), { ownName: ownGameName() });
+    reading.source = cap.source;
     broadcast('ocr:reading', reading);
+    return reading;
   } catch (e) {
     broadcast('ocr:reading', { at: Date.now(), error: e.message });
+    throw e;
   } finally {
     ocrBusy = false;
   }
@@ -397,7 +407,8 @@ function registerIpc() {
   handle('coach:now', async (state = {}) => {
     const S = await staticData.load();
     const m = await loadMeta().catch(() => null);
-    return coachNow({ S, metaComps: m?.comps || [], stats: await loadEngineStats(), state });
+    const unitStats = await getUnitStats(S).catch(() => null);
+    return coachNow({ S, metaComps: m?.comps || [], stats: await loadEngineStats(), unitStats, state });
   });
 
   handle('live:get', () => liveState);
@@ -415,6 +426,9 @@ function registerIpc() {
     stats: engineSummary(),
   }));
   handle('ocr:defaults', () => screenReader.DEFAULT_REGIONS);
+  // "Şimdi oku": oyun algılanmasa da elle okuma yapılabilir.
+  handle('ocr:now', () => ocrTick({ allowScreen: true }));
+  handle('stats:units', async ({ force = false } = {}) => getUnitStats(await staticData.load(), force));
   handle('ocr:capture', async () => {
     const cap = await screenReader.capture();
     lastCapture = cap.image;

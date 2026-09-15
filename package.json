@@ -1,7 +1,7 @@
 {
   "name": "tft-asistan",
   "productName": "TFT Asistan",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "author": "jordenss00-coder",
   "description": "TFT meta comp'ları, trait planlayıcı, oynanış analizi, AI koç ve oyun içi overlay",
   "main": "main.js",

@@ -5,7 +5,7 @@ const CDRAGON = 'https://raw.communitydragon.org/latest';
 const DATA_URL = `${CDRAGON}/cdragon/tft/tr_tr.json`;
 const TEAM_PLANNER_URL = `${CDRAGON}/plugins/rcp-be-lol-game-data/global/default/v1/tftchampions-teamplanner.json`;
 const MAX_AGE = 12 * 60 * 60 * 1000;
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 const COMPONENT_ORDER = [
   'BFSword', 'RecurveBow', 'NeedlesslyLargeRod', 'TearOfTheGoddess', 'ChainVest',
@@ -38,21 +38,34 @@ function formatNum(v) {
   return String(Math.round(v * 100) / 100);
 }
 
+/** CommunityDragon bazı değişkenleri adı yerine FNV-1a karmasıyla ({a9a813e7}) verir. */
+function fnv1a(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
 function lookupVar(vars, key) {
   if (!vars) return undefined;
   if (key in vars) return vars[key];
   const k = Object.keys(vars).find((x) => x.toLowerCase() === key.toLowerCase());
-  return k === undefined ? undefined : vars[k];
+  if (k !== undefined) return vars[k];
+  const hashed = `{${fnv1a(key.toLowerCase())}}`;
+  return hashed in vars ? vars[hashed] : undefined;
 }
 
 function fillVars(text, resolve) {
-  return String(text || '').replace(/@([^@]+)@/g, (_, expr) => {
+  // Çözülemeyen değişkenlerde baştaki "%" de düşürülür ki metinde "%?" gibi kırık ifade kalmasın.
+  return String(text || '').replace(/(%?)@([^@]+)@/g, (_, pct, expr) => {
     const [key, mult] = expr.split('*');
     const v = resolve(key.trim());
     const m = mult ? Number(mult) || 1 : 1;
-    if (Array.isArray(v)) return v.map((x) => formatNum(x * m)).join('/');
+    if (Array.isArray(v)) return pct + v.map((x) => formatNum(x * m)).join('/');
     if (typeof v !== 'number') return '?';
-    return formatNum(v * m);
+    return pct + formatNum(v * m);
   });
 }
 

@@ -432,6 +432,37 @@ body.overlay { overflow: hidden; background: var(--bg); }
 .overlay .picker-input { width: 120px; }
 .overlay .picker-list { width: 240px; }
 
+/* ── Board yerleşimi, seviye planı, birim eşyaları ── */
+.board { background: linear-gradient(180deg, #16203a, #0f1626); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; }
+.board-side { text-align: center; color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+.hex-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 4px; }
+.hex-row.odd { margin-left: 26px; }
+.hex { width: 50px; height: 48px; border-radius: 8px; background: rgba(255, 255, 255, .04); border: 1px solid #22304d; display: grid; place-items: center; }
+.hex.filled { background: rgba(224, 178, 82, .08); border-color: rgba(224, 178, 82, .35); }
+.level-plan { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.level-step { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.unit-items-list { display: flex; flex-direction: column; gap: 4px; }
+.unit-item-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; background: var(--panel-2); border-radius: 8px; }
+.unit-item-row .item-row { margin-top: 2px; }
+.src-note { flex-shrink: 0; font-size: 10.5px; }
+.detail-grid section.wide { grid-column: 1 / -1; }
+.trait-btn { background: none; border: 0; padding: 0; cursor: pointer; }
+.trait-btn:hover .trait { border-color: var(--gold); }
+.item-table td { vertical-align: middle; }
+.item-table .nowrap { white-space: nowrap; }
+.item-table tbody tr { cursor: pointer; }
+.item-table tbody tr:hover { background: var(--panel-2); }
+details.card summary { cursor: pointer; color: var(--gold-2); }
+
+/* ── Modal ── */
+#modal { position: fixed; inset: 0; z-index: 90; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(4, 7, 14, .72); }
+.modal-box { position: relative; margin: 40px auto; width: min(860px, calc(100% - 48px)); max-height: calc(100vh - 80px); overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, .55); }
+.modal-close { position: absolute; right: 10px; top: 10px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+.modal-close:hover { color: var(--text); }
+.modal-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.modal-body h4 { margin: 16px 0 6px; }
+
 /* ── Ekran okuma ── */
 .ocr-fields { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 8px; }
 .ocr-canvas-wrap canvas { width: 100%; display: block; border-radius: 8px; border: 1px solid var(--border); cursor: crosshair; }

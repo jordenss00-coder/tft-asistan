@@ -25,6 +25,17 @@ module.exports = {
           .sort((a, b) => b.items.length - a.items.length || (S.champById[b.apiName]?.cost || 0) - (S.champById[a.apiName]?.cost || 0))
           .slice(0, 3)
           .map((u) => ({ unit: u.apiName, items: u.items }));
+        // Board yerleşimi: boardIndex 0-27 (4 sıra × 7 altıgen; 0-6 ön sıra).
+        const positions = final
+          .filter((u) => Number.isInteger(u.boardIndex))
+          .map((u) => ({ unit: u.apiName, index: u.boardIndex, star: u.stars || 1, items: u.items || [] }));
+        const itemsByUnit = final
+          .filter((u) => (u.items || []).length)
+          .map((u) => ({ unit: u.apiName, items: u.items, source: 'rehber' }));
+        const early = (g.earlyComp || []).map((u) => u.apiName).filter((id) => S.champById[id]);
+        const maxCap = (g.maxCap || [])
+          .filter((u) => S.champById[u.apiName])
+          .map((u) => ({ unit: u.apiName, items: u.items || [], replaces: (u.predecessors || []).filter((p) => S.champById[p]) }));
         return {
           id: `tftacademy:${g.id}`,
           name: String(g.title || g.metaTitle || '').trim(),
@@ -32,7 +43,10 @@ module.exports = {
           units,
           carries,
           stars: final.filter((u) => u.stars >= 3).map((u) => u.apiName),
-          early: (g.earlyComp || []).map((u) => u.apiName).filter((id) => S.champById[id]),
+          positions,
+          itemsByUnit,
+          maxCap,
+          early,
           tips: (g.tips || []).filter((t) => t && t.tip).map((t) => ({ stage: t.stage || '', tip: t.tip })),
           augments: (g.augments || []).filter((a) => a && !a.disabled).map((a) => a.apiName),
           augmentsTip: g.augmentsTip || '',

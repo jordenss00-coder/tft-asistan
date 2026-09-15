@@ -19,8 +19,11 @@ function sourceInfo() {
   return SOURCES.map((s) => ({ id: s.id, name: s.name, kind: s.kind, url: s.url }));
 }
 
+// Kaynak çıktısının yapısı değiştiğinde artırılır; eski önbellek böylece kendiliğinden geçersiz olur.
+const SOURCE_CACHE_VERSION = 2;
+
 async function loadSource(src, S, force) {
-  const key = `source_${src.id}_set${S.setNumber}`;
+  const key = `source_${src.id}_set${S.setNumber}_v${SOURCE_CACHE_VERSION}`;
   const cached = cache.read(key, src.maxAge);
   if (!force && cached?.fresh) return { ...cached.data, stale: false };
   try {
@@ -78,6 +81,18 @@ function finalize(members, S) {
     pick: primaryStats?.pick ?? null,
     places: primaryStats?.places || null,
     stats: statsMembers.map((m) => ({ source: m.sourceName, avg: m.avg, top4: m.top4, win: m.win, count: m.count })),
+    // Yerleşim ve seviye planı rehber kaynağından, birim başına eşyalar tüm kaynaklardan birleştirilir.
+    positions: guide?.positions?.length ? guide.positions : members.find((m) => m.positions?.length)?.positions || [],
+    maxCap: guide?.maxCap || [],
+    itemsByUnit: (() => {
+      const byUnit = new Map();
+      for (const m of [guide, ...statsMembers, ...members].filter(Boolean)) {
+        for (const entry of m.itemsByUnit || []) {
+          if (!byUnit.has(entry.unit)) byUnit.set(entry.unit, entry);
+        }
+      }
+      return [...byUnit.values()];
+    })(),
     sources: members.map((m) => ({ id: m.sourceId, name: m.sourceName, kind: m.kind, tier: m.tier || null, tag: m.tag || null, url: m.url, title: m.name })),
     augments: (guide?.augments?.length ? guide.augments : members.find((m) => m.augments?.length)?.augments) || [],
     guide: guide

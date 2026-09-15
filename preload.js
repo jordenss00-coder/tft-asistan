@@ -6,7 +6,7 @@ const INVOKE = new Set([
   'overlay:toggle', 'overlay:hide', 'overlay:clickThrough', 'overlay:pin',
   'shell:open', 'clipboard:write', 'update:get', 'update:check', 'update:install',
   'coach:now', 'live:get', 'live:set', 'engine:status', 'engine:rebuild',
-  'ocr:defaults', 'ocr:capture', 'ocr:test',
+  'ocr:defaults', 'ocr:capture', 'ocr:test', 'ocr:now', 'stats:units',
 ]);
 const EVENTS = new Set([
   'update:status', 'engine:status', 'engine:stats', 'live:state', 'ocr:reading',
