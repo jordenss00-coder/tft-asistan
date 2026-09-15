@@ -1,6 +1,6 @@
 # Yeni sürümü derler ve GitHub Releases'e yayınlar.
 # Kullanım: package.json içindeki "version" değerini artır, commit'le, sonra: npm run release
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 Set-Location (Join-Path $PSScriptRoot '..')
 
 $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
@@ -21,7 +21,6 @@ $files = @($exe, "$exe.blockmap", 'dist/latest.yml')
 foreach ($f in $files) { if (-not (Test-Path $f)) { throw "Eksik derleme çıktısı: $f" } }
 
 Write-Host "==> $tag etiketi gönderiliyor"
-git push origin HEAD
 git tag $tag
 git push origin $tag
 
