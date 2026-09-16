@@ -49,6 +49,16 @@ let lastCapture = null;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
+// Beklenmeyen bir hata (ör. OCR işçi süreci) uygulamayı çökertmesin; yalnızca bildirilsin.
+process.on('uncaughtException', (err) => {
+  console.error('Beklenmeyen hata:', err);
+  broadcast('app:error', err?.message || String(err));
+});
+process.on('unhandledRejection', (err) => {
+  console.error('Beklenmeyen reddetme:', err);
+  broadcast('app:error', err?.message || String(err));
+});
+
 function setUpdateState(patch) {
   updateState = { ...updateState, ...patch };
   broadcast('update:status', updateState);

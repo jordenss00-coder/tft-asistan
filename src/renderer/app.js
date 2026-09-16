@@ -86,6 +86,7 @@ function bindShell() {
     state.settings.pinnedCompId = comp?.id || null;
     if (state.view === 'meta') renderCompList();
   });
+  window.tft.on('app:error', (msg) => toast(`Beklenmeyen hata: ${msg}`, 'bad', 9000));
   window.tft.on('update:status', renderUpdate);
   window.tft.on('engine:status', (s) => {
     state.engine = { ...state.engine, ...s };
