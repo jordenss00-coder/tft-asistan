@@ -52,8 +52,38 @@ Kullanıcı "onay gerektirmeyen kısmı yaz" dedi; şunlar yazıldı ve `npm tes
 - Eksik veri koruması: tur/altın/seviye gelmeden ekonomi ve board önerisi üretilmiyor;
   `coachNow` artık `missing` listesi döndürüyor ve arayüz eksikleri yazıyor.
 
-Kalan: Overwolf runtime indirme, `overwolf.packages` yapılandırması, onay/kimlik/imzalama,
-gerçek maç testi (test listesindeki 13-15 numaralı maddeler).
+#### Runtime hakkında doğrulanan bilgiler
+
+- `node node_modules/@overwolf/ow-electron/install.js` **kimlik bilgisi istemeden** çalıştı;
+  `path.txt` (`electron.exe`) ve `dist/` oluştu. Binary sürümü: **v42.7.1**.
+- `package.json`'a `"overwolf": { "packages": ["gep"] }` ve `"start:ow": "ow-electron ."` eklendi.
+  `npm start`, `npm run dist` ve yayın akışı standart Electron'da bırakıldı.
+- ow-electron altında `app.overwolf` **mevcut**; istemci `waitingPackage` durumuna geçiyor.
+- **Tuzak (iki kez doğrulandı):** ow-electron uygulama kökünü **giriş dosyasının bulunduğu klasör**
+  olarak alır; en yakın `package.json`'ı aramaz. Giriş dosyası `scratchpad/` veya `scripts/` altındayken
+  `--app-root` o klasör oldu, `package.json` bulunamadı (`ENOENT ... package.json`), `overwolf.packages`
+  hiç okunmadı ve `packages.gep` tanımsız kaldı (`app.overwolf.packages` yalnızca `controller` içeriyordu).
+- Bu yüzden giriş dosyası proje kökünde olmalı: tanı aracı `ow-probe.js` (kökte) →
+  `node node_modules/@overwolf/ow-electron/cli.js ow-probe.js`.
+  Uygulamanın kendisi için `npm run start:ow` (`ow-electron .`) kullanılmalı.
+
+#### Paket yöneticisi doğrulama duvarı (16 Eylül, kanıtlandı)
+
+Uygulama kökü doğru olduğunda (`--app-root=D:\TFT`) `package.json` okunuyor ve ENOENT hatası
+kayboluyor, fakat paket yöneticisi şu mesajla duruyor:
+
+    [owepm] package manager stopped by renderer - invalid verification
+
+Sonuç: `app.overwolf.packages.gep` tanımsız kalıyor, istemci `waitingPackage` durumunda bekliyor,
+uygulama normal çalışmaya devam ediyor (çökme yok, OCR/elle giriş yolu bozulmuyor).
+Bu bir kod hatası değil, Overwolf'un doğrulama duvarıdır. Kod tarafında denenecek bir şey kalmadı.
+
+Devam için gerekenler (hepsi kullanıcı/Overwolf tarafında):
+1. Overwolf hesabı ve app idea başvurusunun onaylanması.
+2. Dev kimlik bilgileri: `OW_CLI_EMAIL` + `OW_CLI_API_KEY` veya onaylı profilden `OW_DEV_KEY`.
+3. Üretim dağıtımı için kod imzalama sertifikası (dev mode paketli uygulamada çalışmıyor).
+
+Kalan: onay/kimlik/imzalama sonrası gerçek maç testi (test listesindeki 13-15 numaralı maddeler).
 
 ### Overwolf paketleri
 
