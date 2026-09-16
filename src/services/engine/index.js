@@ -1,5 +1,6 @@
 const econCoach = require('./econCoach');
 const { matchBoard } = require('./boardMatch');
+const { parseStage } = require('./constants');
 const { countTraits } = require('../traits');
 const { recommendComps } = require('./compRecommender');
 const { adviseItems } = require('./itemCoach');
@@ -75,9 +76,25 @@ function coachNow({ S, metaComps, stats, unitStats = null, state }) {
     || metaComps.find((c) => c.id === recs.top[0]?.id)
     || null;
 
-  const econ = econCoach.advise({ ...state, plan: state.plan || (chosen ? econCoach.planFromLevelling(chosen.levelling) : 'standard') });
+  // Eksik canlı veriyi varsayılanla doldurup öneri üretme; neyin eksik olduğunu bildir.
+  const missing = [];
+  if (!parseStage(state.stage)) missing.push('stage');
+  if (state.gold == null) missing.push('gold');
+  if (state.level == null) missing.push('level');
+
+  let econ = null;
+  if (!missing.includes('stage')) {
+    try {
+      econ = econCoach.advise({ ...state, plan: state.plan || (chosen ? econCoach.planFromLevelling(chosen.levelling) : 'standard') });
+    } catch (e) {
+      missing.push('econ');
+    }
+  }
   const items = adviseItems({ S, stats, unitStats, comp: chosen, components: state.components || [], completed: state.completed || [], stage: state.stage });
-  const board = (state.units || []).length ? checkBoard({ S, stats, state, comp: chosen }) : null;
+  // Board gücü karşılaştırması tur bilgisine dayanır; tur gelmeden hesaplanmaz.
+  const board = (state.units || []).length && !missing.includes('stage')
+    ? checkBoard({ S, stats, state, comp: chosen })
+    : null;
 
   return {
     generatedAt: Date.now(),
@@ -85,6 +102,7 @@ function coachNow({ S, metaComps, stats, unitStats = null, state }) {
     chosenCompId: chosen?.id || null,
     round: roundAdvice({ S, state, chosen, items }),
     econ,
+    missing,
     comps: recs,
     items,
     board,

@@ -18,6 +18,8 @@ const { buildStats } = require('./src/services/engine/stats');
 const { coachNow } = require('./src/services/engine/index');
 const screenReader = require('./src/services/ocr/screenReader');
 const { readBoard } = require('./src/services/ocr/boardVision');
+const { createGepClient } = require('./src/services/gep/client');
+const { toLivePatch } = require('./src/services/gep/tftState');
 const { countTraits } = require('./src/services/traits');
 let boardBusy = false;
 let boardTimer = null;
@@ -78,6 +80,9 @@ let liveState = {};
 let ocrTimer = null;
 let ocrBusy = false;
 let lastCapture = null;
+let staticSet = null;
+let gepClient = null;
+let gepStatus = { mode: 'unavailable', message: 'Overwolf çalışma zamanı yok; canlı veri kapalı.' };
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -259,7 +264,40 @@ function ownGameName() {
   return id.split('#')[0].trim() || null;
 }
 
+/* ── Overwolf canlı veri (GEP) ── */
+
+/** GEP verisi geldikçe canlı durumu günceller. Yalnızca gerçekten gelen alanlar yazılır. */
+function applyGepLive() {
+  const S = staticSet;
+  if (!S || !gepClient) return;
+  const patch = toLivePatch(gepClient.getState(), S);
+  if (!Object.keys(patch).length) return;
+  if (patch.units) {
+    patch.traits = Object.entries(countTraits(patch.units.map((u) => u.id), S))
+      .map(([apiName, count]) => ({ apiName, count, name: S.traitsById[apiName]?.name || apiName }));
+  }
+  liveState = { ...liveState, ...patch, source: 'gep', gepUpdatedAt: Date.now() };
+  broadcast('live:state', liveState);
+}
+
+function initGep() {
+  if (gepClient) return gepStatus;
+  gepClient = createGepClient({
+    overwolf: app.overwolf,
+    getStatic: () => staticSet,
+    onLive: () => applyGepLive(),
+    onStatus: (s) => {
+      gepStatus = s;
+      broadcast('gep:status', s);
+      updateOcrLoop();
+    },
+  });
+  return gepClient.start();
+}
+
 async function ocrTick({ allowScreen = false } = {}) {
+  // GEP canlı veri veriyorsa ekran okuma alanları ezmemeli.
+  if (gepStatus.mode === 'live' && !allowScreen) return null;
   if (ocrBusy) return null;
   ocrBusy = true;
   try {
@@ -278,7 +316,7 @@ async function ocrTick({ allowScreen = false } = {}) {
 }
 
 function updateOcrLoop() {
-  const on = !!store.get().ocrEnabled && gameState.inGame && gameState.isTft;
+  const on = !!store.get().ocrEnabled && gameState.inGame && gameState.isTft && gepStatus.mode !== 'live';
   if (on && !ocrTimer) ocrTimer = setInterval(() => ocrTick().catch(() => {}), 3000);
   if (!on && ocrTimer) {
     clearInterval(ocrTimer);
@@ -469,6 +507,7 @@ function registerIpc() {
     autoCollect: store.get().engineAutoCollect,
     stats: engineSummary(),
   }));
+  handle('gep:status', () => ({ ...gepStatus, available: !!app.overwolf, usable: !!gepClient?.isUsable() }));
   handle('ocr:defaults', () => screenReader.DEFAULT_REGIONS);
   handle('board:read', () => scanBoard());
   handle('board:auto', async ({ enabled = false } = {}) => {
@@ -562,7 +601,11 @@ app.whenReady().then(() => {
   });
 
   staticData.load()
-    .then(() => loadMeta())
+    .then((S) => {
+      staticSet = S;
+      initGep();
+      return loadMeta();
+    })
     .catch((e) => console.error('Ön yükleme hatası:', e.message))
     .then(() => initEngine())
     .catch((e) => console.error('Motor başlatılamadı:', e.message));
@@ -575,6 +618,7 @@ app.on('second-instance', () => {
 });
 
 app.on('will-quit', () => {
+  gepClient?.stop();
   stopBoardScan();
   globalShortcut.unregisterAll();
   collector?.stop();

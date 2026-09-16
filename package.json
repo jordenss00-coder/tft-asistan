@@ -8,6 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "test": "node --test tests/gep.test.js tests/board.test.js",
     "dist": "electron-builder --win nsis --publish never",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1"
   },

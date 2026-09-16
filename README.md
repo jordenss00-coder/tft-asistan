@@ -64,6 +64,25 @@ Bu komut kurulum dosyasını derler ve GitHub Releases'e yükler. Kurulu uygulam
 | **Şampiyon detayı** | Uygulamadaki herhangi bir birime tıklayınca açılır: yeteneğin ne yaptığı (sayılarla, 1★/2★/3★), mana maliyeti, temel değerler, en iyi eşyalar, birimin ortalama sırası ve 3★ başarısı, o birimi kullanan comp'lar. |
 | **Overlay** | Oyunun üstünde duran panel: sabitlenen comp, meta listesi, hızlı trait planı ve eşya tablosu. TFT maçı başlayınca otomatik açılabilir. |
 
+## Canlı veri (Overwolf GEP) — hazırlık aşamasında
+
+Hedef: tahtayı, yedeği, dükkanı, altını, canı ve turu ekrandan okumak yerine Overwolf'un Game Events
+Provider (GEP) servisinden almak. Bu sürümde **kodu ve testleri hazır**, ancak canlı veri için Overwolf
+tarafında tamamlanması gereken adımlar var.
+
+- Hazır olan: `src/services/gep/tftState.js` (GEP verisini uygulama durumuna çeviren saf fonksiyonlar),
+  `src/services/gep/client.js` (paket yaşam döngüsü, oyun algılama, hata/yetki durumları),
+  `tests/gep.test.js` (16 senaryo) ve arayüzdeki veri kaynağı durumu.
+- Kurallar: tahta ile yedek ayrı tutulur, takılı eşyalar boştaki eşya sayılmaz, yalnızca kendi
+  oyuncunun eşyaları kullanılır, rakip verisi yok sayılır, bilinmeyen şampiyon zorla eşleştirilmez,
+  eksik veri varsayılanla doldurulmaz (ekonomi önerisi tur bilgisi gelmeden verilmez).
+- Overwolf çalışma zamanı yoksa uygulama normal çalışır; alanları elle girersin.
+- GEP canlı veri verdiğinde ekran okuma devre dışı kalır, böylece okunan değerler ezilmez.
+
+Eksik olan dış adımlar: Overwolf uygulama başvurusunun onaylanması, geliştirici kimlik bilgileri
+(`OW_CLI_EMAIL` / `OW_CLI_API_KEY` veya `OW_DEV_KEY`), `ow-electron` çalışma zamanının indirilmesi ve
+üretim dağıtımı için kod imzalama sertifikası. Bunlar tamamlanmadan gerçek maç verisi akmaz.
+
 ## Ekran okuma (deneysel)
 
 Ayarlar → **Ekran okuma** açıkken, TFT maçı sırasında 3 saniyede bir oyun penceresinden kendi **altın**, **seviye**, **stage**, (isteğe bağlı) **can** ve **dükkan** bilgilerin okunur ve Canlı Koç'a otomatik aktarılır. Dükkanda hedef comp'una uyan birimler işaretlenir.

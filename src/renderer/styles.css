@@ -422,6 +422,9 @@ body.overlay { overflow: hidden; background: var(--bg); }
 .v-ok { background: rgba(251, 191, 36, .18); color: var(--warn); }
 .v-strong { background: rgba(74, 222, 128, .18); color: var(--good); }
 .engine-note { margin-top: 10px; }
+.live-source { font-size: 12px; padding: 4px 8px; border-radius: 6px; margin-bottom: 8px; background: var(--panel-2); border: 1px solid var(--border); }
+.live-source.src-live { border-color: rgba(74, 222, 128, .5); color: var(--good); }
+.live-source.src-error, .live-source.src-needsElevation { border-color: rgba(251, 191, 36, .5); color: var(--warn); }
 .round-tips { border-left: 3px solid var(--good); }
 .round-tips .reasons li { margin-bottom: 4px; }
 .tip-buy { color: var(--good); }

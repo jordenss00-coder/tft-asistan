@@ -19,6 +19,12 @@ const Live = {
       this.boardStatus = s;
       this.emit('form');
     });
+    // Overwolf canlı veri (GEP) durumu
+    window.tft.on('gep:status', (s) => {
+      this.gepStatus = s;
+      this.emit('form');
+    });
+    call('gep:status').then((s) => { this.gepStatus = s; this.emit('form'); }).catch(() => {});
     try {
       const saved = await call('live:get');
       if (saved && saved.stage) this.state = { ...LIVE_DEFAULT, ...saved };
@@ -119,6 +125,24 @@ function pickerBlock(kind, title, chips) {
     </div></div>`;
 }
 
+const GEP_LABELS = {
+  unavailable: '⚪ Canlı veri kapalı — değerleri elle gir',
+  waitingPackage: '⏳ Overwolf paketi bekleniyor',
+  waitingGame: '⏳ TFT açılması bekleniyor',
+  connected: '🔌 TFT bulundu, veri bekleniyor',
+  live: '🟢 Canlı veri (Overwolf GEP)',
+  needsElevation: '⚠ Oyun yönetici modunda — uygulamayı da yönetici olarak başlat',
+  error: '⚠ Canlı veri hatası',
+};
+
+function gepStatusHtml() {
+  const s = Live.gepStatus;
+  if (!s) return '';
+  const label = GEP_LABELS[s.mode] || s.message || '';
+  const age = s.lastDataAt ? ` · son veri ${Math.max(0, Math.round((Date.now() - s.lastDataAt) / 1000))} sn önce` : '';
+  return `<div class="live-source src-${esc(s.mode)}">${esc(label)}${esc(age)}${s.error ? ` · ${esc(s.error)}` : ''}</div>`;
+}
+
 function liveFormHtml(S, st, metaComps, compact) {
   const count = (id) => st.components.filter((c) => c === id).length;
   const itemChip = (kind) => (id, i) => `<span class="pick-chip">${itemIcon(S, id, 'xs')}${esc(itemName(S, id))}<button type="button" data-remove="${kind}" data-index="${i}" title="Kaldır">×</button></span>`;
@@ -127,6 +151,7 @@ function liveFormHtml(S, st, metaComps, compact) {
     return `<span class="pick-chip cost-${c?.cost || 0}">${c?.icon ? `<img class="chip-portrait" src="${esc(c.icon)}" alt="">` : ''}<button type="button" class="star-btn" data-star-index="${i}" title="Yıldızı değiştir">${'★'.repeat(u.star || 1)}</button>${esc(c?.name || u.id)}<button type="button" data-remove="units" data-index="${i}" title="Kaldır">×</button></span>`;
   };
   return `<div class="live-form ${compact ? 'compact' : 'card'}">
+    ${gepStatusHtml()}
     <div class="live-row">
       <label>Stage<span class="stepper"><button type="button" data-stage="-1">‹</button><input data-field="stage" value="${esc(st.stage)}" maxlength="4"><button type="button" data-stage="1">›</button></span></label>
       <label>Seviye<input type="number" min="1" max="10" data-field="level" value="${st.level}"></label>
@@ -303,7 +328,11 @@ function liveResultHtml(S, compact) {
     <ul class="reasons">${r.round.map((t) => `<li class="tip-${esc(t.type)}">${esc(t.text)}</li>`).join('')}</ul>
   </section>` : '';
 
-  const econ = `<section class="${compact ? 'ov-section' : 'card'} live-card">
+  const MISSING_LABELS = { stage: 'tur (stage)', gold: 'altın', level: 'seviye', econ: 'ekonomi hesabı' };
+  const econ = !e ? `<section class="${compact ? 'ov-section' : 'card'} live-card">
+    <h3>💰 Ekonomi ve seviye</h3>
+    <p class="warn-text">Eksik veri: ${esc((r.missing || ['stage']).map((m) => MISSING_LABELS[m] || m).join(', '))}. Bu bilgiler gelmeden ekonomi önerisi vermiyorum; yukarıdan elle girebilirsin.</p>
+  </section>` : `<section class="${compact ? 'ov-section' : 'card'} live-card">
     <h3>💰 Ekonomi ve seviye</h3>
     <div class="primary-advice act-${esc(e.primary.action)}"><b>${ACTION_ICON[e.primary.action] || ''} ${esc(e.primary.title)}</b><p>${esc(e.primary.detail)}</p></div>
     ${e.alternatives.length ? `<div class="label">Diğer seçenekler</div><ul class="alt-list">${e.alternatives.map((a) => `<li><b>${ACTION_ICON[a.action] || ''} ${esc(a.title)}</b>${compact ? '' : ` <span class="muted">— ${esc(a.detail)}</span>`}</li>`).join('')}</ul>` : ''}
@@ -344,8 +373,19 @@ function liveResultHtml(S, compact) {
 
   const ocr = Live.ocr;
   const chosen = r.comps.top.find((c) => c.id === r.chosenCompId);
+  // Dükkan öncelikle ortak canlı durumdan (GEP veya elle giriş) gelir; OCR yalnızca yedek kaynaktır.
+  const stateShop = (Live.state.shop || []).filter(Boolean);
   let shop = '';
-  if (ocr?.error) {
+  if (stateShop.length) {
+    const source = Live.state.source === 'gep' ? 'canlı veri' : 'girdiğin bilgi';
+    shop = `<section class="${compact ? 'ov-section' : 'card'} live-card">
+      <h3>🛒 Dükkanın <small class="muted">(${esc(source)})</small></h3>
+      <div class="unit-row">${Live.state.shop.map((id) => (id
+      ? `<div class="shop-slot ${chosen?.units.includes(id) ? 'fit' : ''}">${unitIcon(S, id, { size: 'sm' })}</div>`
+      : '<div class="shop-slot empty">?</div>')).join('')}</div>
+      ${chosen ? `<p class="muted small">Altın çerçeveli birimler hedef comp'unda (${esc(chosen.name)}).</p>` : ''}
+    </section>`;
+  } else if (ocr?.error) {
     shop = `<p class="warn-text small">📷 Ekran okuma: ${esc(ocr.error)}</p>`;
   } else if (ocr?.shop?.length) {
     shop = `<section class="${compact ? 'ov-section' : 'card'} live-card">
