@@ -75,6 +75,9 @@
   "license": "UNLICENSED",
   "type": "commonjs",
   "devDependencies": {
+    "@overwolf/ow-electron": "42.7.1",
+    "@overwolf/ow-electron-builder": "26.9.3",
+    "@overwolf/ow-electron-packages-types": "1.1.11",
     "electron": "^44.4.0",
     "electron-builder": "^26.15.3"
   },
