@@ -2,3 +2,13 @@ node_modules/
 dist/
 .data/
 *.log
+
+# Gizli bilgiler: Overwolf/imzalama kimlikleri ve sertifikalar depoya girmemeli
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+secrets/
+ow-credentials*
