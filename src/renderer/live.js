@@ -15,6 +15,10 @@ const Live = {
   listeners: new Set(),
 
   async init() {
+    window.tft.on('board:status', (s) => {
+      this.boardStatus = s;
+      this.emit('form');
+    });
     try {
       const saved = await call('live:get');
       if (saved && saved.stage) this.state = { ...LIVE_DEFAULT, ...saved };
@@ -136,8 +140,16 @@ function liveFormHtml(S, st, metaComps, compact) {
     </div>
     ${pickerBlock('completed', 'Tamamlanmış eşyalar', st.completed.map(itemChip('completed')))}
     ${pickerBlock('augments', 'Güçlendirmeler', st.augments.map(itemChip('augments')))}
-    ${pickerBlock('units', 'Birimlerin (board + yedek) <small class="muted">· yıldıza tıkla</small>', st.units.map(unitChip))}
-    ${compact ? '' : `<label class="live-target">Hedef comp<select data-field="compId"><option value="">Otomatik (en uygun öneri)</option>${metaComps.filter((c) => c.units.length).map((c) => `<option value="${esc(c.id)}" ${c.id === st.compId ? 'selected' : ''}>[${esc(c.tier)}] ${esc(c.name)}</option>`).join('')}</select></label>`}
+    <div class="live-block">
+      <div class="label">Tahtamı algıla · deneysel</div>
+      <p class="muted small">Kendi tahtanı hazırlık aşamasında aç. Bu düğmeler TFT pencere görüntüsünü Gemini’ye gönderir; API kullanım ücreti oluşabilir. Okunan birimleri aşağıdan kontrol edip düzelt.</p>
+      <div class="actions-row"><button type="button" class="btn btn-sm" data-act="board-read">Tahtamı oku ve öner</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-act="board-auto">${Live.boardStatus?.automatic ? 'Otomatik okumayı durdur' : '30 sn otomatik okumayı başlat'}</button></div>
+      <p class="small" role="status">${esc(Live.boardStatus?.error || Live.boardStatus?.message || 'Tahta henüz okunmadı.')}</p>
+      ${st.boardReadAt ? `<p class="muted small">Son başarılı okuma: ${esc(new Date(st.boardReadAt).toLocaleTimeString('tr-TR'))}. Liste bu görüntüye aittir.</p>` : ''}
+    </div>
+    ${pickerBlock('units', 'Sahadaki birimlerin (yedekleri ekleme) <small class="muted">· yıldıza tıkla</small>', st.units.map(unitChip))}
+    <label class="live-target">Hedef comp<select data-field="compId"><option value="">Otomatik (tahtama göre)</option>${metaComps.filter((c) => c.units.length).map((c) => `<option value="${esc(c.id)}" ${c.id === st.compId ? 'selected' : ''}>[${esc(c.tier)}] ${esc(c.name)}</option>`).join('')}</select></label>
     ${st.traits?.length ? `<div class="live-block"><div class="label">Ekrandan okunan trait'lerin</div><div class="trait-row">${st.traits.map((t) => `<span class="trait trait-low"><b>${t.count}</b>${esc(t.name)}</span>`).join('')}</div></div>` : ''}
     <div class="actions-row">
       <button type="button" class="btn btn-sm" data-act="live-read" title="Oyun penceresini şimdi oku (algılama beklemeden)">📷 Şimdi oku</button>
@@ -242,6 +254,12 @@ function bindLiveForm(root, ctx) {
       else if (kind === 'augments') {
         if (!st.augments.includes(id) && st.augments.length < 4) Live.set({ augments: [...st.augments, id] }, { render: true });
       } else Live.set({ [kind]: [...st[kind], id] }, { render: true });
+    } else if (t.dataset.act === 'board-read' || t.dataset.act === 'board-auto') {
+      t.disabled = true;
+      const automatic = t.dataset.act === 'board-auto';
+      call(automatic ? 'board:auto' : 'board:read', automatic ? { enabled: !Live.boardStatus?.automatic } : undefined)
+        .catch(err => { Live.boardStatus = { ...Live.boardStatus, error: err.message }; Live.emit('form'); })
+        .finally(() => { t.disabled = false; });
     } else if (t.dataset.act === 'live-next') {
       const income = Live.result?.econ?.facts?.income || 0;
       Live.set({ stage: stepStage(st.stage, 1), gold: st.gold + income }, { render: true });
@@ -274,6 +292,10 @@ function liveResultHtml(S, compact) {
   if (Live.error) return emptyState('Öneri hesaplanamadı', Live.error);
   if (!r) return spinner('Öneriler hesaplanıyor…');
   const e = r.econ;
+  const detected = r.detectedComp;
+  const boardComp = `<section class="${compact ? 'ov-section' : 'card'} live-card"><h3>Oynadığın comp</h3>${detected
+    ? `<b>${esc(detected.name)}</b><p>${detected.shared.length} ortak birimle en yakın eşleşme; kesin sınıflandırma değildir.</p><p>Eksik birimler: ${esc(detected.missing.map(id => S.champById[id]?.name || id).join(', ') || 'Yok')}</p>${Live.state.compId ? '<p>Elle seçtiğin hedef comp önerilerde öncelikli.</p>' : '<p>Eşya ve seviye önerileri bu comp’a göre hesaplandı.</p>'}`
+    : '<p>Tahtana yeterince yakın comp bulunamadı. Birimlerini oku veya listeyi düzelt.</p>'}</section>`;
   const fact = (label, value) => `<span class="fact"><small>${esc(label)}</small><b>${esc(value)}</b></span>`;
 
   const roundTips = r.round?.length ? `<section class="${compact ? 'ov-section' : 'card'} live-card round-tips">
@@ -338,6 +360,6 @@ function liveResultHtml(S, compact) {
   const note = `<p class="muted small engine-note">${r.usesEngineStats ? `📊 Öneriler ${r.engineMatches.toLocaleString('tr-TR')} yüksek elo maçından hesaplanan istatistikleri kullanıyor.` : '📊 Kendi istatistik motorunda henüz yeterli veri yok; öneriler şimdilik site istatistiklerine dayanıyor.'}</p>`;
 
   return compact
-    ? roundTips + econ + shop + items + comps + board + note
-    : `<div class="live-results">${roundTips}${econ}${shop}${items}${comps}${board}</div>${note}`;
+    ? boardComp + roundTips + econ + shop + items + comps + board + note
+    : `<div class="live-results">${boardComp}${roundTips}${econ}${shop}${items}${comps}${board}</div>${note}`;
 }

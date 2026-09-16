@@ -2,14 +2,15 @@ const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 // En düşük maliyetli güncel Flash-Lite modeli. Ayarlar'dan değiştirilebilir.
 const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
-async function generate({ apiKey, model = DEFAULT_MODEL, system, contents, maxTokens = 4096 }) {
+async function generate({ apiKey, model = DEFAULT_MODEL, system, contents, maxTokens = 4096, jsonMode = false }) {
   const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
+    signal: AbortSignal.timeout(45000),
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents,
-      generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens },
+      generationConfig: { temperature: jsonMode ? 0 : 0.5, maxOutputTokens: maxTokens, ...(jsonMode ? { responseMimeType: 'application/json' } : {}) },
     }),
   });
   const json = await res.json().catch(() => ({}));

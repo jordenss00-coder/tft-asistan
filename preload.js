@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const INVOKE = new Set([
+  'board:read', 'board:auto',
   'settings:get', 'settings:set', 'static:get', 'meta:get', 'meta:sources', 'planner:plan',
   'riot:analyze', 'riot:lastAnalysis', 'account:detect', 'account:forget', 'coach:ask', 'gemini:models',
   'overlay:toggle', 'overlay:hide', 'overlay:clickThrough', 'overlay:pin',
@@ -9,6 +10,7 @@ const INVOKE = new Set([
   'ocr:defaults', 'ocr:capture', 'ocr:test', 'ocr:now', 'stats:units', 'champs:details',
 ]);
 const EVENTS = new Set([
+  'board:status',
   'update:status', 'engine:status', 'engine:stats', 'live:state', 'ocr:reading', 'app:error',
   'settings:changed', 'comp:pinned', 'game:state', 'overlay:visible', 'overlay:clickThrough', 'riot:progress', 'meta:updated',
 ]);

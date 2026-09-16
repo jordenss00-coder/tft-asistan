@@ -17,6 +17,38 @@ const { Collector } = require('./src/services/engine/collector');
 const { buildStats } = require('./src/services/engine/stats');
 const { coachNow } = require('./src/services/engine/index');
 const screenReader = require('./src/services/ocr/screenReader');
+const { readBoard } = require('./src/services/ocr/boardVision');
+const { countTraits } = require('./src/services/traits');
+let boardBusy = false;
+let boardTimer = null;
+let boardGeneration = 0;
+
+async function scanBoard() {
+  if (boardBusy) throw new Error('Tahta okuma zaten sürüyor.');
+  boardBusy = true;
+  const generation = boardGeneration;
+  try {
+    const cap = await screenReader.capture();
+    if (cap.source !== 'game') throw new Error('TFT penceresi bulunamadı. Oyunu kenarlıksız modda aç.');
+    const S = await staticData.load();
+    const result = await readBoard(cap.image, S, store.get());
+    if (generation !== boardGeneration) return null;
+    if (result.partial) throw new Error('Tahtanın yalnızca bir kısmı tanındı; mevcut birimlerin değiştirilmedi. Tekrar dene veya elle düzelt.');
+    const traits = Object.entries(countTraits(result.units.map(u => u.id), S))
+      .map(([apiName, count]) => ({ apiName, count, name: S.traitsById[apiName]?.name || apiName }));
+    const units = result.units.map(u => ({ ...u, items: liveState.units?.find(old => old.id === u.id)?.items || [] }));
+    liveState = { ...liveState, units, traits, boardReadAt: result.at };
+    broadcast('live:state', liveState);
+    broadcast('board:status', { at: result.at, message: `${result.units.length} şampiyon okundu. Listeyi kontrol et.`, automatic: !!boardTimer });
+    return result;
+  } finally { boardBusy = false; }
+}
+
+function stopBoardScan() {
+  clearInterval(boardTimer);
+  boardTimer = null;
+  boardGeneration++;
+}
 const { getUnitStats } = require('./src/services/unitStats');
 const { getChampionDetails } = require('./src/services/championDetails');
 
@@ -247,7 +279,7 @@ async function ocrTick({ allowScreen = false } = {}) {
 
 function updateOcrLoop() {
   const on = !!store.get().ocrEnabled && gameState.inGame && gameState.isTft;
-  if (on && !ocrTimer) ocrTimer = setInterval(ocrTick, 3000);
+  if (on && !ocrTimer) ocrTimer = setInterval(() => ocrTick().catch(() => {}), 3000);
   if (!on && ocrTimer) {
     clearInterval(ocrTimer);
     ocrTimer = null;
@@ -424,6 +456,7 @@ function registerIpc() {
 
   handle('live:get', () => liveState);
   handle('live:set', (patch = {}, event) => {
+    if (Object.hasOwn(patch, 'units')) boardGeneration++;
     liveState = { ...liveState, ...patch };
     for (const w of [mainWin, overlayWin]) {
       if (w && !w.isDestroyed() && w.webContents !== event.sender) w.webContents.send('live:state', liveState);
@@ -437,6 +470,19 @@ function registerIpc() {
     stats: engineSummary(),
   }));
   handle('ocr:defaults', () => screenReader.DEFAULT_REGIONS);
+  handle('board:read', () => scanBoard());
+  handle('board:auto', async ({ enabled = false } = {}) => {
+    stopBoardScan();
+    if (enabled) {
+      if (!store.get().geminiApiKey) throw new Error('Önce Gemini API anahtarını ekle.');
+      boardTimer = setInterval(() => {
+        if (!boardBusy) scanBoard().catch(e => broadcast('board:status', { error: e.message, automatic: true }));
+      }, 30000);
+    }
+    broadcast('board:status', { automatic: !!boardTimer, message: enabled ? '30 saniyede bir tahta okuma açık.' : 'Otomatik tahta okuma kapalı.' });
+    if (enabled) scanBoard().catch(e => broadcast('board:status', { error: e.message, automatic: !!boardTimer }));
+    return { automatic: !!boardTimer };
+  });
   // "Şimdi oku": oyun algılanmasa da elle okuma yapılabilir.
   handle('ocr:now', () => ocrTick({ allowScreen: true }));
   handle('stats:units', async ({ force = false } = {}) => getUnitStats(await staticData.load(), force));
@@ -504,6 +550,12 @@ app.whenReady().then(() => {
     gameState = state;
     broadcast('game:state', state);
     const isTft = state.inGame && state.isTft;
+    if (wasTft && !isTft) {
+      stopBoardScan();
+      liveState = {};
+      broadcast('live:state', liveState);
+      broadcast('board:status', { automatic: false, message: 'Maç bitti; tahta takibi durduruldu.' });
+    }
     if (store.get().autoOverlay && isTft !== wasTft) setOverlayVisible(isTft);
     if (isTft && !wasTft) detectAccount().catch(() => {});
     updateOcrLoop();
@@ -523,6 +575,7 @@ app.on('second-instance', () => {
 });
 
 app.on('will-quit', () => {
+  stopBoardScan();
   globalShortcut.unregisterAll();
   collector?.stop();
   if (ocrTimer) clearInterval(ocrTimer);

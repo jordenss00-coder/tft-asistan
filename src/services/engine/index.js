@@ -1,4 +1,5 @@
 const econCoach = require('./econCoach');
+const { matchBoard } = require('./boardMatch');
 const { countTraits } = require('../traits');
 const { recommendComps } = require('./compRecommender');
 const { adviseItems } = require('./itemCoach');
@@ -68,7 +69,9 @@ function roundAdvice({ S, state, chosen, items }) {
 
 function coachNow({ S, metaComps, stats, unitStats = null, state }) {
   const recs = recommendComps({ S, metaComps, stats, unitStats, state });
+  const detectedComp = matchBoard(state.units, metaComps);
   const chosen = metaComps.find((c) => c.id === state.compId)
+    || metaComps.find((c) => c.id === detectedComp?.id)
     || metaComps.find((c) => c.id === recs.top[0]?.id)
     || null;
 
@@ -78,6 +81,7 @@ function coachNow({ S, metaComps, stats, unitStats = null, state }) {
 
   return {
     generatedAt: Date.now(),
+    detectedComp,
     chosenCompId: chosen?.id || null,
     round: roundAdvice({ S, state, chosen, items }),
     econ,

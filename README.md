@@ -12,6 +12,23 @@ Her kullanıcı kendi Riot ve Gemini API anahtarını Ayarlar'dan girer. Anahtar
 
 ## Geliştirme
 
+### Tahtaya göre canlı öneri (0.5.3)
+
+Canlı Koç ve overlay içindeki **Tahtamı oku ve öner** düğmesi TFT pencere görüntüsünü
+Gemini'ye gönderir (kullanıcının Gemini anahtarı gerekir; API ücreti oluşabilir).
+Kendi tahtanı hazırlık aşamasında açık tut. Deneysel görsel tanıma şampiyonları ve
+yıldızları okur; belirsiz/eksik sonuç mevcut listeyi değiştirmez. Okunan listeyi
+kontrol et, gerekirse birimleri ve yıldızlarını düzelt. Eşyalar hâlâ elle girilir.
+**30 sn otomatik okumayı başlat** oturum boyunca çalışır; durdurulabilir ve maç
+bittiğinde kapanır. Uygulama yeniden açılınca tekrar etkinleştirilmelidir.
+
+Motor sahadaki birimleri meta comp'larıyla karşılaştırır; en yakın yeterli eşleşme
+eşya/seviye önerilerinin hedefidir. Elle seçilen hedef her zaman önceliklidir.
+Eşleşme bir olasılık veya kazanma yüzdesi değildir. Gerçek maçlardaki görsel tanıma
+doğruluğu henüz ölçülmemiştir; otomatik karar veya oyun girdisi uygulanmaz.
+
+Doğrulama: `node --test tests/board.test.js`
+
 ```bash
 npm install
 npm start
